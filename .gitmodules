@@ -1,0 +1,3 @@
+[submodule "scenic"]
+	path = scenic
+	url = https://github.com/google-research/scenic.git

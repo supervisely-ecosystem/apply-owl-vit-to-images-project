@@ -1,0 +1,19 @@
+{
+  "type": "app",
+  "version": "2.0.0",
+  "name": "Training dashboard",
+  "description": "Template app for integration your own NN in Supervisely ecosystem",
+  "categories": [
+    "neural network",
+    "train",
+    "object detection"
+  ],
+  "entrypoint": "python -m uvicorn src.main:app --host 0.0.0.0 --port 8000",
+  "port": 8000,
+  "context_menu": {
+    "target": ["images_project"],
+    "context_root": "Report"
+  },
+  "need_gpu": true,
+  "community_agent": false
+}
