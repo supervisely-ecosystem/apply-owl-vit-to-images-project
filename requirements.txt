@@ -9,6 +9,7 @@ tensorflow-macos
 tensorflow-datasets
 scikit-image
 bokeh
+matplotlib
 # optax @ git+https://github.com/deepmind/optax.git@master"
 
 # COCO and LVIS API for evaluation:
@@ -16,6 +17,7 @@ bokeh
 # lvis
 
 # To import Sinkhorn matcher:
+jax
 ott-jax==0.2.0
 
 # # code formatter
