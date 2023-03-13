@@ -26,4 +26,5 @@ workspace = api.workspace.get_info_by_id(project_info.workspace_id)
 # team.id will be used for storaging app results in team files
 team = api.team.get_info_by_id(workspace.team_id)
 
-PREVIEW_IMAGES_COUNT = 6
+COLUMNS_COUNT = 6
+PREVIEW_IMAGES_COUNT = 18
