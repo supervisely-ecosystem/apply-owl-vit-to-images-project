@@ -25,6 +25,7 @@ project_meta = sly.ProjectMeta.from_json(api.project.get_meta(project_id))
 workspace = api.workspace.get_info_by_id(project_info.workspace_id)
 # team.id will be used for storaging app results in team files
 team = api.team.get_info_by_id(workspace.team_id)
+os.environ["TEAM_ID"] = str(team.id)
 
 COLUMNS_COUNT = 6
 PREVIEW_IMAGES_COUNT = 18

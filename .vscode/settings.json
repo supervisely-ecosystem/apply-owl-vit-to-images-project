@@ -4,9 +4,9 @@
     "**/__pycache__": true,
     ".venv": true
   },
-  "editor.formatOnSave": true,
+  "editor.formatOnSave": false,
   "editor.formatOnPaste": false,
-  "editor.formatOnType": true,
+  "editor.formatOnType": false,
   "[html]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },

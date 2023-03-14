@@ -22,6 +22,9 @@ from supervisely.app.widgets import (
     InputNumber,
     Field,
     Progress,
+    SelectAppSession,
+    DoneLabel,
+    ModelInfo,
 )
 import src.sly_globals as g
 
@@ -38,6 +41,7 @@ DEVICE = torch.device("cuda") if torch.cuda.is_available() else torch.device("cp
 PREVIEW_IMAGES_INFOS = []
 CURRENT_REF_IMAGE_INDEX = 0
 REF_IMAGE_HISTORY = [CURRENT_REF_IMAGE_INDEX]
+model_data = {}
 
 datasets_list = g.api.dataset.get_list(g.project_id)
 image_info_list = []
@@ -119,15 +123,92 @@ data_card = Card(
     ),
 )
 
+############################
+### Inference type selection
+############################
+confidence_threshhold_input = InputNumber(value=0.5, min=00.1, max=1, step=0.01)
+nms_threshhold_input = InputNumber(value=1, min=0.01, max=1, step=0.01)
+field_confidence_threshhold = Field(
+    title="Confidence threshold",
+    description="Threshold for the minimum confidence that a detection must have to be displayed (higher values mean fewer boxes will be shown):",
+    content=confidence_threshhold_input,
+)
+field_nms_threshhold = Field(
+    title="NMS threshold",
+    description="Threshold for non-maximum suppression of overlapping boxes (higher values mean more boxes will be shown)",
+    content=nms_threshhold_input,
+)
 
-###########################################
-### Model settings and results preview card
-###########################################
+select_model = SelectAppSession(
+    team_id=g.team.id, tags=["deployed_owl_vit_object_detection"]
+)
+connect_model_done = DoneLabel("Model successfully connected.")
+connect_model_done.hide()
+model_info = ModelInfo()
+set_inference_type_button = Button(
+    text="Connect to model",
+    icon="zmdi zmdi-input-composite",
+    button_type="success",
+)
+inference_type_selection_tabs = RadioTabs(
+    titles=["Local inference", "Served model"],
+    contents=[
+        Container(
+            [field_confidence_threshhold, field_nms_threshhold],
+            direction="horizontal",
+        ),
+        Container(
+            [select_model, set_inference_type_button, connect_model_done, model_info]
+        ),
+    ],
+    descriptions=[
+        "Run model locally on the available accelerator",
+        "Select served model",
+    ],
+)
+inference_type_selection_card = Card(
+    title="Model settings",
+    description="Select served Owl-ViT model or run it as-is on the available accelerator",
+    content=inference_type_selection_tabs,
+)
+
+
+@set_inference_type_button.click
+def connect_to_model():
+    model_session_id = select_model.get_selected_id()
+    if model_session_id is not None:
+        set_inference_type_button.hide()
+        connect_model_done.show()
+        select_model.disable()
+        # show model info
+        model_info.set_session_id(session_id=model_session_id)
+        model_info.show()
+        set_inference_type_button.text = "Change model"
+        # get model meta
+        model_meta_json = g.api.task.send_request(
+            model_session_id,
+            "get_output_classes_and_tags",
+            data={},
+        )
+        sly.logger.info(f"Model meta: {str(model_meta_json)}")
+        model_data["model_meta"] = sly.ProjectMeta.from_json(model_meta_json)
+        model_data["session_id"] = model_session_id
+
+
+#############################
+### Model input configuration
+#############################
 text_prompt_textarea = Input(
     placeholder="Description of object, that you want to detect via NN model"
 )
 image_region_selector = ImageRegionSelector(
     image_info=ref_image_info, widget_width="500px", widget_height="500px"
+)
+class_input = Input(placeholder="The class name for selected object")
+class_input_field = Field(
+    content=class_input,
+    title="Class name",
+    description="All detected objects will be added to project/dataset with this class name",
 )
 
 
@@ -136,29 +217,54 @@ def bbox_updated(new_scaled_bbox):
     sly.logger.info(f"new_scaled_bbox: {new_scaled_bbox}")
 
 
-previous_image_button = Button("Previous image", icon="zmdi zmdi-skip-previous")
-next_image_button = Button("Next image", icon="zmdi zmdi-skip-next")
-random_image_button = Button("New random image", icon="zmdi zmdi-refresh")
+previous_image_button = Button(
+    "Previous image", icon="zmdi zmdi-skip-previous", button_size="small"
+)
+next_image_button = Button(
+    "Next image", icon="zmdi zmdi-skip-next", button_size="small"
+)
+random_image_button = Button(
+    "New random image", icon="zmdi zmdi-refresh", button_size="small"
+)
 set_input_button = Button("Set model input")
+previous_image_button.disable()
 
 
 @previous_image_button.click
 def previous_image():
-    CURRENT_REF_IMAGE_INDEX = REF_IMAGE_HISTORY[-2]
+    global CURRENT_REF_IMAGE_INDEX, REF_IMAGE_HISTORY
+    CURRENT_REF_IMAGE_INDEX = REF_IMAGE_HISTORY[
+        -(REF_IMAGE_HISTORY[::-1].index(CURRENT_REF_IMAGE_INDEX) + 2)
+    ]
     image_region_selector.image_update(image_info_list[CURRENT_REF_IMAGE_INDEX])
+    if CURRENT_REF_IMAGE_INDEX == REF_IMAGE_HISTORY[0]:
+        previous_image_button.disable()
 
 
 @next_image_button.click
 def next_image():
-    CURRENT_REF_IMAGE_INDEX = REF_IMAGE_HISTORY[-1] + 1
+    global CURRENT_REF_IMAGE_INDEX, REF_IMAGE_HISTORY
+    if CURRENT_REF_IMAGE_INDEX != REF_IMAGE_HISTORY[-1]:
+        CURRENT_REF_IMAGE_INDEX = REF_IMAGE_HISTORY[
+            REF_IMAGE_HISTORY.index(CURRENT_REF_IMAGE_INDEX) + 1
+        ]
+    else:
+        CURRENT_REF_IMAGE_INDEX += 1
+        REF_IMAGE_HISTORY.append(CURRENT_REF_IMAGE_INDEX)
+    REF_IMAGE_HISTORY = REF_IMAGE_HISTORY[-10:]
     image_region_selector.image_update(image_info_list[CURRENT_REF_IMAGE_INDEX])
+    previous_image_button.enable()
 
 
 @random_image_button.click
 def random_image():
+    global CURRENT_REF_IMAGE_INDEX, REF_IMAGE_HISTORY
     CURRENT_REF_IMAGE_INDEX = random.randint(0, len(image_info_list) - 1)
     REF_IMAGE_HISTORY.append(CURRENT_REF_IMAGE_INDEX)
+    REF_IMAGE_HISTORY = REF_IMAGE_HISTORY[-10:]
     image_region_selector.image_update(image_info_list[CURRENT_REF_IMAGE_INDEX])
+    previous_image_button.enable()
+    next_image_button.enable()
 
 
 @set_input_button.click
@@ -188,10 +294,12 @@ model_input_tabs = RadioTabs(
     contents=[
         Container(
             [
+                Container(
+                    [previous_image_button, next_image_button, random_image_button],
+                    direction="horizontal",
+                ),
                 image_region_selector,
-                previous_image_button,
-                next_image_button,
-                random_image_button,
+                class_input_field,
             ]
         ),
         Container([text_prompt_textarea]),
@@ -202,11 +310,15 @@ model_input_tabs = RadioTabs(
     ],
 )
 model_settings_card = Card(
-    title="Model settings",
+    title="Model input configuration",
     description="Configure input for model as text-prompt or as reference image",
     content=Container([model_input_tabs, set_input_button]),
 )
 
+
+###################
+### Results preview
+###################
 grid_gallery = GridGallery(
     columns_number=g.COLUMNS_COUNT,
     annotations_opacity=0.5,
@@ -214,32 +326,34 @@ grid_gallery = GridGallery(
     enable_zoom=False,
     sync_views=False,
     fill_rectangle=True,
+    show_preview=True,
 )
-for i in range(g.PREVIEW_IMAGES_COUNT):
-    img_info = random.choice(image_info_list)
-    PREVIEW_IMAGES_INFOS.append(img_info)
-    grid_gallery.append(
-        title=img_info.name,
-        image_url=img_info.preview_url,
-        column_index=int(i % g.COLUMNS_COUNT),
-    )
-confidence_threshhold_input = InputNumber(value=0.5, min=00.1, max=1, step=0.01)
-nms_threshhold_input = InputNumber(value=1, min=0.01, max=1, step=0.01)
-field_confidence_threshhold = Field(
-    title="Confidence threshold",
-    description="Threshold for the minimum confidence that a detection must have to be displayed (higher values mean fewer boxes will be shown):",
-    content=confidence_threshhold_input,
-)
-field_nms_threshhold = Field(
-    title="NMS threshold",
-    description="Threshold for non-maximum suppression of overlapping boxes (higher values mean more boxes will be shown)",
-    content=nms_threshhold_input,
-)
-update_preview_button = Button("Update preview")
+update_images_preview_button = Button("New random images", icon="zmdi zmdi-refresh")
 
 
-@update_preview_button.click
-def update_preview():
+@update_images_preview_button.click
+def update_images_preview():
+    grid_gallery.clean_up()
+    for i in range(g.PREVIEW_IMAGES_COUNT):
+        img_info = random.choice(image_info_list)
+        PREVIEW_IMAGES_INFOS.append(img_info)
+        grid_gallery.append(
+            title=img_info.name,
+            image_url=img_info.preview_url,
+            column_index=int(i % g.COLUMNS_COUNT),
+        )
+
+
+update_images_preview()
+
+
+update_predictions_preview_button = Button(
+    "Predictions preview", icon="zmdi zmdi-labels"
+)
+
+
+@update_predictions_preview_button.click
+def update_predictions_preview():
     confidence_threshhold = confidence_threshhold_input.get_value()
     nms_threshhold = nms_threshhold_input.get_value()
 
@@ -295,14 +409,14 @@ def update_preview():
         boxes = results[0]["boxes"].cpu().detach().numpy()
         labels = results[0]["labels"]
         if labels is None:
-            labels = ["Object"] * len(boxes)
+            labels = [class_input.get_value()] * len(boxes)
         else:
             labels = [text_queries[label] for label in labels]
 
         for score, box, label in zip(scores, boxes, labels):
             if score < confidence_threshhold:
                 continue
-            obj_class = sly.ObjClass(f"Object-{label}", sly.Rectangle)
+            obj_class = sly.ObjClass(label, sly.Rectangle)
             x0, y0, x1, y1 = box
             obj_label = sly.Label(sly.Rectangle(y0, x0, y1, x1), obj_class)
             new_annotation = new_annotation.add_label(obj_label)
@@ -326,26 +440,27 @@ def update_preview():
 preview_card = Card(
     title="Preview results",
     description="Model prediction result preview",
-    content=Container(
-        [
-            Container(
-                [field_confidence_threshhold, field_nms_threshhold],
-                direction="horizontal",
-            ),
-            grid_gallery,
-            update_preview_button,
-        ]
+    content=grid_gallery,
+    content_top_right=Container(
+        [update_images_preview_button, update_predictions_preview_button],
+        direction="horizontal",
     ),
 )
 
 run_model_button = Button("Run model")
 model_progress = Progress(message="Applying model..", hide_on_finish=False)
 run_model_card = Card(
-    title="Model apply progress",
+    title="Apply model",
     content=Container([run_model_button, model_progress]),
 )
 
 stepper = Stepper(
-    widgets=[data_card, model_settings_card, preview_card, run_model_card]
+    widgets=[
+        data_card,
+        inference_type_selection_card,
+        model_settings_card,
+        preview_card,
+        run_model_card,
+    ]
 )
 app = sly.Application(layout=stepper)
