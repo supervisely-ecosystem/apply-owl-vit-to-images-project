@@ -1,79 +1,50 @@
-import jax
-import numpy as np
-from scipy.special import expit as sigmoid
-import skimage
+import torch
+import supervisely as sly
+from transformers import OwlViTProcessor, OwlViTForObjectDetection
+from transformers.image_utils import ImageFeatureExtractionMixin
 
-# config = clip_b32.get_config(init_mode='canonical_checkpoint')
-
-# module = models.TextZeroShotDetectionModule(
-#     body_configs=config.model.body,
-#     normalize=config.model.normalize,
-#     box_bias=config.model.box_bias)
-
-# variables = module.load_variables(config.init_from.checkpoint_path)
+import src.sly_globals as g
 
 
-def prepare_image(config, image):
-    # Load example image:
-    # filename = os.path.join(skimage.data_dir, "astronaut.png")
-    # image_uint8 = skimage_io.imread(filename)
-    # image = image_uint8.astype(np.float32) / 255.0
+def apply_model(images, target_sizes, model, processor, query_image=None, text_queries=None, confidence_threshhold=0.5, nms_threshhold=0.5):
+    if query_image is not None:
+        inputs = processor(
+            images=images, query_images=query_image, return_tensors="pt"
+        ).to(g.DEVICE)
 
-    # Pad to square with gray pixels on bottom and right:
-    h, w, _ = image.shape
-    size = max(h, w)
-    image_padded = np.pad(
-        image, ((0, size - h), (0, size - w), (0, 0)), constant_values=0.5
-    )
+        with torch.no_grad():
+            outputs = model.image_guided_detection(**inputs)
 
-    # Resize to model input size:
-    input_image = skimage.transform.resize(
-        image_padded,
-        (config.dataset_configs.input_size, config.dataset_configs.input_size),
-        anti_aliasing=True,
-    )
+        outputs.logits = outputs.logits.cpu()
+        outputs.target_pred_boxes = outputs.target_pred_boxes.cpu()
 
+        results = processor.post_process_image_guided_detection(
+            outputs=outputs,
+            threshold=confidence_threshhold,
+            nms_threshold=nms_threshhold,
+            target_sizes=target_sizes,
+        )
+    else:
+        inputs = processor(text=text_queries, images=images, return_tensors="pt").to(g.DEVICE)
 
-def prepare_text(text_queries, config, module):
-    # text_queries = ["human face", "rocket", "nasa badge", "star-spangled banner"]
-    tokenized_queries = np.array(
-        [
-            module.tokenize(q, config.dataset_configs.max_query_length)
-            for q in text_queries
-        ]
-    )
+        with torch.no_grad():
+            outputs = model(**inputs)
 
-    # Pad tokenized queries to avoid recompilation if number of queries changes:
-    tokenized_queries = np.pad(
-        tokenized_queries,
-        pad_width=((0, 100 - len(text_queries)), (0, 0)),
-        constant_values=0,
-    )
+        results = processor.post_process(
+            outputs=outputs,
+            target_sizes=target_sizes,
+            # threshold=confidence_threshhold,
+            # nms_threshold=nms_threshhold,
+        )
+    return results
 
-
-def get_predictions(module, variables, input_image=None, tokenized_queries=None):
-    # Note: The model expects a batch dimension.
-    predictions = module.apply(
-        variables, input_image[None, ...], tokenized_queries[None, ...], train=False
-    )
-
-    # Remove batch dimension and convert to numpy:
-    predictions = jax.tree_util.tree_map(lambda x: np.array(x[0]), predictions)
-    return predictions
-
-
-def draw_predictions(
-    predictions,
-    text_queries: None,
-    confidence_threshhold: float = 0.6,
-    nms_threshhold: float = 0.3,
-):
-    logits = predictions["pred_logits"][..., : len(text_queries)]  # Remove padding.
-    scores = sigmoid(np.max(logits, axis=-1))
-    labels = np.argmax(predictions["pred_logits"], axis=-1)
-    boxes = predictions["pred_boxes"]
-
+def predictions_to_anno(scores, boxes, labels, image_info, confidence_threshhold):
+    new_annotation = sly.Annotation(img_size=(image_info.height, image_info.width))
     for score, box, label in zip(scores, boxes, labels):
         if score < confidence_threshhold:
             continue
-        cx, cy, w, h = box
+        obj_class = sly.ObjClass(label, sly.Rectangle)
+        x0, y0, x1, y1 = box
+        obj_label = sly.Label(sly.Rectangle(y0, x0, y1, x1), obj_class)
+        new_annotation = new_annotation.add_label(obj_label)
+    return new_annotation

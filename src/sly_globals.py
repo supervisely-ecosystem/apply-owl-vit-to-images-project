@@ -5,6 +5,7 @@ from pathlib import Path
 
 import supervisely as sly
 from dotenv import load_dotenv
+import torch
 
 load_dotenv("local.env")
 load_dotenv(os.path.expanduser("~/supervisely.env"))
@@ -12,6 +13,7 @@ load_dotenv(os.path.expanduser("~/supervisely.env"))
 app_root_directory = str(Path(__file__).parent.absolute().parents[0])
 sly.logger.info(f"Root source directory: {app_root_directory}")
 project_dir = os.path.join(app_root_directory, "sly_project")
+output_project_dir = os.path.join(app_root_directory, "output_project_dir")
 data_dir = os.path.join(app_root_directory, "data")
 checkpoints_dir = os.path.join(data_dir, "checkpoints")
 os.environ["SLY_APP_DATA_DIR"] = data_dir
@@ -27,5 +29,6 @@ workspace = api.workspace.get_info_by_id(project_info.workspace_id)
 team = api.team.get_info_by_id(workspace.team_id)
 os.environ["TEAM_ID"] = str(team.id)
 
+DEVICE = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 COLUMNS_COUNT = 6
 PREVIEW_IMAGES_COUNT = 18
