@@ -40,7 +40,7 @@ IS_IMAGE_PROMPT = True
 PREVIEW_IMAGES_INFOS = []
 CURRENT_REF_IMAGE_INDEX = 0
 REF_IMAGE_HISTORY = [CURRENT_REF_IMAGE_INDEX]
-model_data = {}
+MODEL_DATA = {}
 
 # fetching some images for preview
 datasets_list = g.api.dataset.get_list(g.project_id)
@@ -141,11 +141,9 @@ select_model = SelectAppSession(
 connect_model_done = DoneLabel("Model successfully connected.")
 connect_model_done.hide()
 model_info = ModelInfo()
-set_inference_type_button = Button(
-    text="Connect to model",
-    icon="zmdi zmdi-input-composite",
-    button_type="success",
-)
+set_inference_type_button = Button(text="Connect to model", icon="zmdi zmdi-input-composite")
+change_inference_type_button = Button(text="Disconnect model", button_type="warning", icon='zmdi zmdi-close', plain=True)
+change_inference_type_button.hide()
 inference_type_selection_tabs = RadioTabs(
     titles=["Local inference", "Served model"],
     contents=[
@@ -154,7 +152,7 @@ inference_type_selection_tabs = RadioTabs(
             direction="horizontal",
         ),
         Container(
-            [select_model, set_inference_type_button, connect_model_done, model_info]
+            [select_model, set_inference_type_button, change_inference_type_button, connect_model_done, model_info]
         ),
     ],
     descriptions=[
@@ -171,27 +169,49 @@ inference_type_selection_card = Card(
     description="Select served Owl-ViT model or run it as-is on the available accelerator",
     content=inference_type_selection_tabs,
 )
+@change_inference_type_button.click
+def change_model():
+    MODEL_DATA["session_id"] = None
+    MODEL_DATA["model_meta"] = None
+    connect_model_done.hide()
+    model_info.hide()
+    select_model.enable()
+    inference_type_selection_tabs.enable()
+    set_inference_type_button.enable()
+    set_inference_type_button.show()
+    change_inference_type_button.disable()
+    change_inference_type_button.hide()
 
 @set_inference_type_button.click
 def connect_to_model():
     model_session_id = select_model.get_selected_id()
     if model_session_id is not None:
-        set_inference_type_button.hide()
-        connect_model_done.show()
-        select_model.disable()
-        # show model info
-        model_info.set_session_id(session_id=model_session_id)
-        model_info.show()
-        set_inference_type_button.text = "Change model"
-        # get model meta
-        model_meta_json = g.api.task.send_request(
-            model_session_id,
-            "get_output_classes_and_tags",
-            data={},
-        )
-        sly.logger.info(f"Model meta: {str(model_meta_json)}")
-        model_data["model_meta"] = sly.ProjectMeta.from_json(model_meta_json)
-        model_data["session_id"] = model_session_id
+        try:
+            set_inference_type_button.disable()
+            inference_type_selection_tabs.disable()
+            select_model.disable()
+            # get model meta
+            model_meta_json = g.api.task.send_request(
+                model_session_id,
+                "get_output_classes_and_tags",
+                data={},
+            )
+            sly.logger.info(f"Model meta: {str(model_meta_json)}")
+            MODEL_DATA["model_meta"] = sly.ProjectMeta.from_json(model_meta_json)
+            MODEL_DATA["session_id"] = model_session_id
+            connect_model_done.show()
+            model_info.set_session_id(session_id=model_session_id)
+            model_info.show()
+            set_inference_type_button.hide()
+            change_inference_type_button.show()
+            change_inference_type_button.enable()
+        except Exception as e:
+            sly.logger.error(f"Cannot to connect to model. {e}")
+            set_inference_type_button.enable()
+            inference_type_selection_tabs.enable()
+            connect_model_done.hide()
+            select_model.enable()
+            model_info.hide()
 
 
 #############################
@@ -346,7 +366,7 @@ update_predictions_preview_button = Button(
 )
 @update_predictions_preview_button.click
 def update_predictions_preview():
-    global IS_IMAGE_PROMPT
+    global IS_LOCAL_INFERENCE, IS_IMAGE_PROMPT
     confidence_threshhold = confidence_threshhold_input.get_value()
     nms_threshhold = nms_threshhold_input.get_value()
 
@@ -360,41 +380,72 @@ def update_predictions_preview():
         image = sly.image.read(get_image_path(image_info.name))
         target_sizes = torch.Tensor([[image_info.height, image_info.width]]).to(g.DEVICE)
 
-        if IS_IMAGE_PROMPT:
-            selected_bbox = image_region_selector.scaled_bbox
-            x0, y0, x1, y1 = np.array(selected_bbox).reshape(-1)
-            query_image = sly.image.read(get_image_path(ref_image_info.name))
-            query_image = query_image[y0:y1, x0:x1]
-            results = apply_model(
-                image, 
-                target_sizes, 
-                model, 
-                processor, 
-                query_image, 
-                confidence_threshhold=confidence_threshhold, 
-                nms_threshhold=nms_threshhold
-            )
+        if IS_LOCAL_INFERENCE:
+            if IS_IMAGE_PROMPT:
+                selected_bbox = image_region_selector.scaled_bbox
+                x0, y0, x1, y1 = np.array(selected_bbox).reshape(-1)
+                query_image = sly.image.read(get_image_path(ref_image_info.name))
+                query_image = query_image[y0:y1, x0:x1]
+                results = apply_model(
+                    image, 
+                    target_sizes, 
+                    model, 
+                    processor, 
+                    query_image, 
+                    confidence_threshhold=confidence_threshhold, 
+                    nms_threshhold=nms_threshhold
+                )
+            else:
+                text_queries = text_prompt_textarea.get_value().split(";")
+                results = apply_model(
+                    image, 
+                    target_sizes, 
+                    model, 
+                    processor, 
+                    text_queries=text_queries, 
+                    confidence_threshhold=confidence_threshhold, 
+                    nms_threshhold=nms_threshhold
+                )
+            
+            scores = results[0]["scores"].cpu().detach().numpy()
+            boxes = results[0]["boxes"].cpu().detach().numpy()
+            labels = results[0]["labels"]
+            if labels is None:
+                labels = [f"{class_input.get_value()}_pred"] * len(boxes)
+            else:
+                labels = [f"{text_queries[label]}_pred" for label in labels]
+            new_annotation = predictions_to_anno(scores, boxes, labels, image_info, confidence_threshhold)
         else:
-            text_queries = text_prompt_textarea.get_value().split(";")
-            results = apply_model(
-                image, 
-                target_sizes, 
-                model, 
-                processor, 
-                text_queries=text_queries, 
-                confidence_threshhold=confidence_threshhold, 
-                nms_threshhold=nms_threshhold
-            )
+            if IS_IMAGE_PROMPT:
+                inference_settings = dict(
+                    query_image = query_image,
+                    confidence_threshold = confidence_threshhold,
+                    nms_threshhold=nms_threshhold,
+                )
+                ann = g.api.task.send_request(
+                    MODEL_DATA["session_id"],
+                    "inference_image_id",
+                    data={"image_id": image_info.id, "settings": inference_settings},
+                    timeout=500,
+                )
+            else:
+                text_queries = text_prompt_textarea.get_value().split(";")
+                inference_settings = dict(
+                    query_image = text_queries,
+                    confidence_threshold = confidence_threshhold,
+                    nms_threshhold=nms_threshhold,
+                )
+                ann = g.api.task.send_request(
+                    MODEL_DATA["session_id"],
+                    "inference_image_id",
+                    data={"image_id": image_info.id, "settings": inference_settings},
+                    timeout=500,
+                )
+            
+            temp_meta = g.project_meta.clone().add_obj_class(sly.ObjClass('object', sly.Rectangle))
+            temp_meta = temp_meta.add_tag_meta(sly.TagMeta('confidence', sly.TagValueType.ANY_NUMBER))
+            new_annotation = sly.Annotation.from_json(ann["annotation"], temp_meta)
 
-
-        scores = results[0]["scores"].cpu().detach().numpy()
-        boxes = results[0]["boxes"].cpu().detach().numpy()
-        labels = results[0]["labels"]
-        if labels is None:
-            labels = [class_input.get_value()] * len(boxes)
-        else:
-            labels = [text_queries[label] for label in labels]
-        new_annotation = predictions_to_anno(scores, boxes, labels, image_info, confidence_threshhold)
         annotations_list.append(new_annotation)
         sly.logger.info(
             f"{i+1} image processed. {len(PREVIEW_IMAGES_INFOS) - (i+1)} images left."
@@ -446,7 +497,7 @@ run_model_button = Button("Run model")
 
 @run_model_button.click
 def run_model():
-    global IS_LOCAL_INFERENCE
+    global IS_LOCAL_INFERENCE, IS_IMAGE_PROMPT
     confidence_threshhold = confidence_threshhold_input.get_value()
     nms_threshhold = nms_threshhold_input.get_value()
 
@@ -532,17 +583,35 @@ def run_model():
                     boxes = results[0]["boxes"].cpu().detach().numpy()
                     labels = results[0]["labels"]
                     if labels is None:
-                        labels = [class_input.get_value()] * len(boxes)
+                        labels = [f"{class_input.get_value()}_pred"] * len(boxes)
                     else:
-                        labels = [text_queries[label] for label in labels]
+                        labels = [f"{text_queries[label]}_pred" for label in labels]
                     ann = predictions_to_anno(scores, boxes, labels, image_info, confidence_threshhold)
                 else:
-                    ann = g.api.task.send_request(
-                        model_data["session_id"],
-                        "inference_image_id",
-                        data={"image_id": image_info.id, "settings": inference_settings},
-                        timeout=500,
-                    )
+                    if IS_IMAGE_PROMPT:
+                        inference_settings = dict(
+                            query_image = query_image,
+                            confidence_threshold = confidence_threshhold,
+                            nms_threshhold=nms_threshhold,
+                        )
+                        ann = g.api.task.send_request(
+                            MODEL_DATA["session_id"],
+                            "inference_image_id",
+                            data={"image_id": image_info.id, "settings": inference_settings},
+                            timeout=500,
+                        )
+                    else:
+                        inference_settings = dict(
+                            text_queries = text_queries,
+                            confidence_threshold = confidence_threshhold,
+                            nms_threshhold=nms_threshhold,
+                        )
+                        ann = g.api.task.send_request(
+                            MODEL_DATA["session_id"],
+                            "inference_image_id",
+                            data={"image_id": image_info.id, "settings": inference_settings},
+                            timeout=500,
+                        )
                     ann = sly.Annotation.from_json(ann["annotation"], output_project_meta)
 
                 for target_class_name in set(labels):
