@@ -552,7 +552,7 @@ run_model_button = Button("Run model")
 
 @run_model_button.click
 def run_model():
-    global IS_LOCAL_INFERENCE, IS_IMAGE_PROMPT
+    global IS_LOCAL_INFERENCE, IS_IMAGE_PROMPT, MODEL_DATA
     confidence_threshhold = confidence_threshhold_input.get_value()
     nms_threshhold = nms_threshhold_input.get_value()
 
@@ -580,8 +580,19 @@ def run_model():
         output_project_meta = output_project_meta.merge(g.project_meta)
 
     if IS_LOCAL_INFERENCE:
-        model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch32")
-        processor = OwlViTProcessor.from_pretrained("google/owlvit-base-patch32")
+        selected_model = MODEL_DATA['model']
+        if selected_model == "OWL-ViT base patch 32":
+            processor = OwlViTProcessor.from_pretrained("google/owlvit-base-patch32")
+            model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch32")
+        elif selected_model == "OWL-ViT base patch 16":
+            processor = OwlViTProcessor.from_pretrained("google/owlvit-base-patch16")
+            model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch16")
+        elif selected_model == "OWL-ViT large patch 14":
+            processor = OwlViTProcessor.from_pretrained("google/owlvit-large-patch14")
+            model = OwlViTForObjectDetection.from_pretrained("google/owlvit-large-patch14")
+
+        # model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch32")
+        # processor = OwlViTProcessor.from_pretrained("google/owlvit-base-patch32")
         model = model.to(g.DEVICE)
         model.eval()
 
