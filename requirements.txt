@@ -1,4 +1,4 @@
-supervisely==6.69.68
+git+https://github.com/supervisely/supervisely.git@radio_group_label_fix
 
 # For CLIP:
 torch>=1.10.2
