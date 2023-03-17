@@ -1,19 +1,24 @@
 {
+  "name": "Apply OWL-ViT To Images Project",
   "type": "app",
   "version": "2.0.0",
-  "name": "Training dashboard",
-  "description": "Template app for integration your own NN in Supervisely ecosystem",
+  "description": "Class-angnostic object detection model",
   "categories": [
     "neural network",
-    "train",
-    "object detection"
+    "object detection",
+    "salient object segmentation",
+    "inference interfaces",
+    "images"
   ],
   "entrypoint": "python -m uvicorn src.main:app --host 0.0.0.0 --port 8000",
   "port": 8000,
   "context_menu": {
     "target": ["images_project"],
-    "context_root": "Report"
+    "context_root": "Neural Networks"
   },
+  "task_location": "workspace_tasks",
   "need_gpu": true,
-  "community_agent": false
+  "community_agent": false,
+  "release": { "version":"v1.0.0", "name":"init" },
+  "slug": "supervisely-ecosystem/owl-vit-app"
 }
