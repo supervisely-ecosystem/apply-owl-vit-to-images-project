@@ -27,11 +27,12 @@ from supervisely.app.widgets import (
     DoneLabel,
     ModelInfo,
     Switch,
-    RadioGroup
+    RadioGroup,
+    RadioTable
 )
 import src.sly_globals as g
 
-from src.model import apply_model, predictions_to_anno
+from src.model import apply_model, predictions_to_anno, inference_json_anno_preprocessing
 from transformers import OwlViTProcessor, OwlViTForObjectDetection
 from transformers.image_utils import ImageFeatureExtractionMixin
 
@@ -99,6 +100,8 @@ def download_data():
         progress_bar_download_data.hide()
         button_download_data.hide()
         text_download_data.show()
+        toggle_cards(['inference_type_selection_card'], enabled=True)
+        set_model_type_button.enable()
         stepper.set_active_step(2)
     except Exception as e:
         sly.logger.info("Something went wrong.")
@@ -106,6 +109,8 @@ def download_data():
         button_download_data.show()
         text_download_data.set("Data download failed", status="error")
         text_download_data.show()
+        toggle_cards(['inference_type_selection_card', 'model_settings_card', 'preview_card', 'run_model_card'], enabled=False)
+        set_model_type_button.disable()
         stepper.set_active_step(1)
 data_card = Card(
     title="Input data",
@@ -123,36 +128,35 @@ data_card = Card(
 ############################
 ### Inference type selection
 ############################
-confidence_threshhold_input = InputNumber(value=0.5, min=00.1, max=1, step=0.01)
-nms_threshhold_input = InputNumber(value=1, min=0.01, max=1, step=0.01)
-field_confidence_threshhold = Field(
-    title="Confidence threshold",
-    description="Threshold for the minimum confidence that a detection must have to be displayed (higher values mean fewer boxes will be shown):",
-    content=confidence_threshhold_input,
-)
-field_nms_threshhold = Field(
-    title="NMS threshold",
-    description="Threshold for non-maximum suppression of overlapping boxes (higher values mean more boxes will be shown)",
-    content=nms_threshhold_input,
-)
-select_model = SelectAppSession(
+select_model_session = SelectAppSession(
     team_id=g.team.id, tags=["deployed_owl_vit_object_detection"]
 )
+@select_model_session.value_changed
+def select_model_session_change(val):
+    if val is None:
+        if IS_LOCAL_INFERENCE is False:
+            set_model_type_button.disable()
+    else:
+        set_model_type_button.enable()
+
 connect_model_done = DoneLabel("Model successfully connected.")
 connect_model_done.hide()
 model_info = ModelInfo()
-set_inference_type_button = Button(text="Connect to model", icon="zmdi zmdi-input-composite")
-change_inference_type_button = Button(text="Disconnect model", button_type="warning", icon='zmdi zmdi-close', plain=True)
-change_inference_type_button.hide()
+set_model_type_button = Button(text="Select model")
+model_config_table = RadioTable(
+    columns=["Model", "Backbone", "Pretraining", "Size", "LVIS AP", "LVIS APr", ], 
+    rows=[
+        ["OWL-ViT base patch 32", "ViT-B/32","CLIP", "583 MB", "19.3", "16.9",],
+        ["OWL-ViT base patch 16", "ViT-B/16","CLIP", "581 MB", "20.8", "17.1",],
+        ["OWL-ViT base patch 14", "ViT-L/14","CLIP", "1.65 GB", "34.6", "31.2",],
+    ], 
+)
 inference_type_selection_tabs = RadioTabs(
     titles=["Local inference", "Served model"],
     contents=[
+        model_config_table,
         Container(
-            [field_confidence_threshhold, field_nms_threshhold],
-            direction="horizontal",
-        ),
-        Container(
-            [select_model, set_inference_type_button, change_inference_type_button, connect_model_done, model_info]
+            [select_model_session, connect_model_done, model_info]
         ),
     ],
     descriptions=[
@@ -163,55 +167,101 @@ inference_type_selection_tabs = RadioTabs(
 @inference_type_selection_tabs.value_changed
 def inference_type_changed(val):
     global IS_LOCAL_INFERENCE
-    IS_LOCAL_INFERENCE = True if val == 'Local inference' else False
+    if val == 'Local inference':
+        IS_LOCAL_INFERENCE = True 
+        set_model_type_button.text = 'Select model'
+        set_model_type_button.enable()
+    else:
+        IS_LOCAL_INFERENCE = False
+        set_model_type_button.text = 'Connect to model'
+        if select_model_session.get_selected_id() is None:
+            set_model_type_button.disable()
+
 inference_type_selection_card = Card(
     title="Model settings",
     description="Select served Owl-ViT model or run it as-is on the available accelerator",
-    content=inference_type_selection_tabs,
+    content=Container([inference_type_selection_tabs, set_model_type_button]),
 )
-@change_inference_type_button.click
-def change_model():
-    MODEL_DATA["session_id"] = None
-    MODEL_DATA["model_meta"] = None
-    connect_model_done.hide()
-    model_info.hide()
-    select_model.enable()
-    inference_type_selection_tabs.enable()
-    set_inference_type_button.enable()
-    set_inference_type_button.show()
-    change_inference_type_button.disable()
-    change_inference_type_button.hide()
 
-@set_inference_type_button.click
-def connect_to_model():
-    model_session_id = select_model.get_selected_id()
-    if model_session_id is not None:
-        try:
-            set_inference_type_button.disable()
-            inference_type_selection_tabs.disable()
-            select_model.disable()
-            # get model meta
-            model_meta_json = g.api.task.send_request(
-                model_session_id,
-                "get_output_classes_and_tags",
-                data={},
-            )
-            sly.logger.info(f"Model meta: {str(model_meta_json)}")
-            MODEL_DATA["model_meta"] = sly.ProjectMeta.from_json(model_meta_json)
-            MODEL_DATA["session_id"] = model_session_id
-            connect_model_done.show()
-            model_info.set_session_id(session_id=model_session_id)
-            model_info.show()
-            set_inference_type_button.hide()
-            change_inference_type_button.show()
-            change_inference_type_button.enable()
-        except Exception as e:
-            sly.logger.error(f"Cannot to connect to model. {e}")
-            set_inference_type_button.enable()
+@set_model_type_button.click
+def set_model_type():
+    global IS_LOCAL_INFERENCE, MODEL_DATA
+
+    if IS_LOCAL_INFERENCE:
+        if set_model_type_button.text == 'Change model':
+            MODEL_DATA = {}
+            model_config_table.enable()
             inference_type_selection_tabs.enable()
+            set_model_type_button.text = 'Select model'
+            toggle_cards(['model_settings_card', 'preview_card', 'run_model_card'], enabled=False)
+            set_input_button.disable()
+            update_images_preview_button.disable()
+            update_predictions_preview_button.disable()
+            run_model_button.disable()
+            stepper.set_active_step(2)
+        else:
+            inference_type_selection_tabs.disable()
+            MODEL_DATA = dict(zip(map(str.lower, model_config_table.columns), model_config_table.get_selected_row()))
+            model_config_table.disable()
+            set_model_type_button.text = 'Change model'
+            toggle_cards(['model_settings_card'], enabled=True)
+            set_input_button.enable()
+            stepper.set_active_step(3)
+    else:
+        if set_model_type_button.text == 'Disconnect model':
+            MODEL_DATA["session_id"] = None
+            MODEL_DATA["model_meta"] = None
             connect_model_done.hide()
-            select_model.enable()
             model_info.hide()
+            select_model_session.enable()
+            inference_type_selection_tabs.enable()
+            set_model_type_button.enable()
+            set_model_type_button.text = 'Connect to model'
+            toggle_cards(['model_settings_card', 'preview_card', 'run_model_card'], enabled=False)
+            set_input_button.disable()
+            update_images_preview_button.disable()
+            update_predictions_preview_button.disable()
+            run_model_button.disable()
+            stepper.set_active_step(2)
+        else:
+            model_session_id = select_model_session.get_selected_id()
+            if model_session_id is not None:
+                try:
+                    set_model_type_button.disable()
+                    inference_type_selection_tabs.disable()
+                    select_model_session.disable()
+                    # get model meta
+                    model_meta_json = g.api.task.send_request(
+                        model_session_id,
+                        "get_output_classes_and_tags",
+                        data={},
+                    )
+                    sly.logger.info(f"Model meta: {str(model_meta_json)}")
+                    MODEL_DATA["model_meta"] = sly.ProjectMeta.from_json(model_meta_json)
+                    MODEL_DATA["session_id"] = model_session_id
+                    connect_model_done.show()
+                    model_info.set_session_id(session_id=model_session_id)
+                    model_info.show()
+                    set_model_type_button.text = 'Disconnect model'
+                    set_model_type_button._plain = True
+                    set_model_type_button.enable()
+                    toggle_cards(['model_settings_card'], enabled=True)
+                    set_input_button.enable()
+                    stepper.set_active_step(3)
+                except Exception as e:
+                    sly.logger.error(f"Cannot to connect to model. {e}")
+                    set_model_type_button.enable()
+                    set_model_type_button.text = 'Connect to model'
+                    inference_type_selection_tabs.enable()
+                    connect_model_done.hide()
+                    select_model_session.enable()
+                    model_info.hide()
+                    toggle_cards(['model_settings_card', 'preview_card', 'run_model_card'], enabled=False)
+                    set_input_button.disable()
+                    update_images_preview_button.disable()
+                    update_predictions_preview_button.disable()
+                    run_model_button.disable()
+                    stepper.set_active_step(2)
 
 
 #############################
@@ -281,24 +331,20 @@ def random_image():
 
 @set_input_button.click
 def set_model_input():
-    if model_settings_card.is_disabled() is False:
-        model_settings_card.disable()
-        model_input_tabs.disable()
-        previous_image_button.disable()
-        next_image_button.disable()
-        random_image_button.disable()
-        image_region_selector.disable()
-        text_prompt_textarea.disable()
-        set_input_button.text = "Change model input"
-    else:
-        model_settings_card.enable()
-        model_input_tabs.enable()
-        previous_image_button.enable()
-        next_image_button.enable()
-        random_image_button.enable()
-        image_region_selector.enable()
-        text_prompt_textarea.enable()
+    if model_settings_card.is_disabled() is True:
         set_input_button.text = "Set model input"
+        toggle_cards(['model_settings_card'], enabled=True)
+        toggle_cards(['preview_card', 'run_model_card'], enabled=False)
+        update_images_preview_button.disable()
+        update_predictions_preview_button.disable()
+        run_model_button.disable()
+    else:
+        set_input_button.text = "Change model input"
+        toggle_cards(['model_settings_card'], enabled=False)
+        toggle_cards(['preview_card', 'run_model_card'], enabled=True)
+        update_images_preview_button.enable()
+        update_predictions_preview_button.enable()
+        run_model_button.enable()
 
 model_input_tabs = RadioTabs(
     titles=["Reference image", "Text prompt"],
@@ -325,10 +371,22 @@ def model_input_changed(val):
     global IS_IMAGE_PROMPT
     IS_IMAGE_PROMPT = True if val == 'Reference image' else False
 
+confidence_threshhold_input = InputNumber(value=0.5, min=00.1, max=1, step=0.01)
+nms_threshhold_input = InputNumber(value=1, min=0.01, max=1, step=0.01)
+field_confidence_threshhold = Field(
+    title="Confidence threshold",
+    description="Threshold for the minimum confidence that a detection must have to be displayed (higher values mean fewer boxes will be shown):",
+    content=confidence_threshhold_input,
+)
+field_nms_threshhold = Field(
+    title="NMS threshold",
+    description="Threshold for non-maximum suppression of overlapping boxes (higher values mean more boxes will be shown)",
+    content=nms_threshhold_input,
+)
 model_settings_card = Card(
     title="Model input configuration",
     description="Configure input for model as text-prompt or as reference image",
-    content=Container([model_input_tabs, set_input_button]),
+    content=Container([model_input_tabs, Container([field_confidence_threshhold, field_nms_threshhold], direction="horizontal"), set_input_button]),
 )
 
 
@@ -370,10 +428,17 @@ def update_predictions_preview():
     confidence_threshhold = confidence_threshhold_input.get_value()
     nms_threshhold = nms_threshhold_input.get_value()
 
-    model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch32")
-    processor = OwlViTProcessor.from_pretrained("google/owlvit-base-patch32")
-    model = model.to(g.DEVICE)
-    model.eval()
+    # for TEXT PROMPT
+    text_queries = text_prompt_textarea.get_value().split(";")
+    # for IMAGE REFERENCE
+    selected_bbox = image_region_selector.scaled_bbox
+    x0, y0, x1, y1 = *selected_bbox[0], *selected_bbox[1]
+
+    if IS_LOCAL_INFERENCE:
+        model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch32")
+        processor = OwlViTProcessor.from_pretrained("google/owlvit-base-patch32")
+        model = model.to(g.DEVICE)
+        model.eval()
 
     annotations_list = []
     for i, image_info in enumerate(PREVIEW_IMAGES_INFOS):
@@ -382,8 +447,6 @@ def update_predictions_preview():
 
         if IS_LOCAL_INFERENCE:
             if IS_IMAGE_PROMPT:
-                selected_bbox = image_region_selector.scaled_bbox
-                x0, y0, x1, y1 = np.array(selected_bbox).reshape(-1)
                 query_image = sly.image.read(get_image_path(ref_image_info.name))
                 query_image = query_image[y0:y1, x0:x1]
                 results = apply_model(
@@ -396,7 +459,6 @@ def update_predictions_preview():
                     nms_threshhold=nms_threshhold
                 )
             else:
-                text_queries = text_prompt_textarea.get_value().split(";")
                 results = apply_model(
                     image, 
                     target_sizes, 
@@ -418,9 +480,12 @@ def update_predictions_preview():
         else:
             if IS_IMAGE_PROMPT:
                 inference_settings = dict(
-                    query_image = query_image,
+                    mode = "reference_image",
+                    reference_bbox = [y0, x0, y1, x1],
+                    reference_image_id = image_region_selector.image_id,
+                    reference_class_name = class_input.get_value(),
                     confidence_threshold = confidence_threshhold,
-                    nms_threshhold=nms_threshhold,
+                    # nms_threshhold=nms_threshhold,
                 )
                 ann = g.api.task.send_request(
                     MODEL_DATA["session_id"],
@@ -431,7 +496,8 @@ def update_predictions_preview():
             else:
                 text_queries = text_prompt_textarea.get_value().split(";")
                 inference_settings = dict(
-                    query_image = text_queries,
+                    mode = "text_prompt",
+                    text_queries = text_queries,
                     confidence_threshold = confidence_threshhold,
                     nms_threshhold=nms_threshhold,
                 )
@@ -441,10 +507,7 @@ def update_predictions_preview():
                     data={"image_id": image_info.id, "settings": inference_settings},
                     timeout=500,
                 )
-            
-            temp_meta = g.project_meta.clone().add_obj_class(sly.ObjClass('object', sly.Rectangle))
-            temp_meta = temp_meta.add_tag_meta(sly.TagMeta('confidence', sly.TagValueType.ANY_NUMBER))
-            new_annotation = sly.Annotation.from_json(ann["annotation"], temp_meta)
+            new_annotation = inference_json_anno_preprocessing(ann, g.project_meta)
 
         annotations_list.append(new_annotation)
         sly.logger.info(
@@ -497,7 +560,7 @@ run_model_button = Button("Run model")
 
 @run_model_button.click
 def run_model():
-    global IS_LOCAL_INFERENCE, IS_IMAGE_PROMPT
+    global IS_LOCAL_INFERENCE, IS_IMAGE_PROMPT, MODEL_DATA
     confidence_threshhold = confidence_threshhold_input.get_value()
     nms_threshhold = nms_threshhold_input.get_value()
 
@@ -525,8 +588,19 @@ def run_model():
         output_project_meta = output_project_meta.merge(g.project_meta)
 
     if IS_LOCAL_INFERENCE:
-        model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch32")
-        processor = OwlViTProcessor.from_pretrained("google/owlvit-base-patch32")
+        selected_model = MODEL_DATA['model']
+        if selected_model == "OWL-ViT base patch 32":
+            processor = OwlViTProcessor.from_pretrained("google/owlvit-base-patch32")
+            model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch32")
+        elif selected_model == "OWL-ViT base patch 16":
+            processor = OwlViTProcessor.from_pretrained("google/owlvit-base-patch16")
+            model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch16")
+        elif selected_model == "OWL-ViT large patch 14":
+            processor = OwlViTProcessor.from_pretrained("google/owlvit-large-patch14")
+            model = OwlViTForObjectDetection.from_pretrained("google/owlvit-large-patch14")
+
+        # model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch32")
+        # processor = OwlViTProcessor.from_pretrained("google/owlvit-base-patch32")
         model = model.to(g.DEVICE)
         model.eval()
 
@@ -551,7 +625,7 @@ def run_model():
                 
                 text_queries = text_prompt_textarea.get_value().split(";")
                 selected_bbox = image_region_selector.scaled_bbox
-                x0, y0, x1, y1 = np.array(selected_bbox).reshape(-1)
+                x0, y0, x1, y1 = *selected_bbox[0], *selected_bbox[1]
                 
                 if IS_LOCAL_INFERENCE:
                     image = sly.image.read(get_image_path(image_info.name))
@@ -590,9 +664,12 @@ def run_model():
                 else:
                     if IS_IMAGE_PROMPT:
                         inference_settings = dict(
-                            query_image = query_image,
+                            mode = "reference_image",
+                            reference_bbox = [y0, x0, y1, x1],
+                            reference_image_id = image_region_selector.image_id,
+                            reference_class_name = class_input.get_value(),
                             confidence_threshold = confidence_threshhold,
-                            nms_threshhold=nms_threshhold,
+                            # nms_threshhold=nms_threshhold,
                         )
                         ann = g.api.task.send_request(
                             MODEL_DATA["session_id"],
@@ -602,6 +679,7 @@ def run_model():
                         )
                     else:
                         inference_settings = dict(
+                            mode = "text_prompt",
                             text_queries = text_queries,
                             confidence_threshold = confidence_threshhold,
                             nms_threshhold=nms_threshhold,
@@ -612,7 +690,10 @@ def run_model():
                             data={"image_id": image_info.id, "settings": inference_settings},
                             timeout=500,
                         )
-                    ann = sly.Annotation.from_json(ann["annotation"], output_project_meta)
+                    ann = inference_json_anno_preprocessing(ann, output_project_meta)
+                    labels = [label.obj_class.name for label in ann.labels]
+                    if output_project_meta.get_tag_meta('confidence') is None:
+                        output_project_meta = output_project_meta.add_tag_meta(sly.TagMeta('confidence', sly.TagValueType.ANY_NUMBER))
 
                 for target_class_name in set(labels):
                     target_class = output_project_meta.get_obj_class(target_class_name)
@@ -626,13 +707,10 @@ def run_model():
                 g.api.annotation.upload_ann(new_image_info.id, image_ann)
                 pbar.update()
 
-    output_project.set_meta(output_project_meta)
-    output_project_thmb.set(info=output_project)
-
+    output_project_info = g.api.project.get_info_by_id(output_project_id)
+    output_project_thmb.set(info=output_project_info)
     output_project_thmb.show()
     sly.logger.info("Project was successfully labeled")
-    app.shutdown()
-
 
 output_project_thmb = ProjectThumbnail()
 output_project_thmb.hide()
@@ -640,6 +718,70 @@ run_model_card = Card(
     title="Apply model",
     content=Container([select_output_destination, output_project_name_field, keep_existed_annotations, run_model_button, apply_progress_bar, output_project_thmb]),
 )
+
+def toggle_cards(cards: List[str], enabled: bool = False):
+    if 'data_card' in cards:
+        if enabled:
+            data_card.enable()
+        else:
+            data_card.disable()
+    if 'inference_type_selection_card' in cards:
+        if enabled:
+            inference_type_selection_card.enable()
+            select_model_session.enable()
+            model_config_table.enable()
+            inference_type_selection_tabs.enable()
+        else:
+            inference_type_selection_card.disable()
+            select_model_session.disable()
+            model_config_table.disable()
+            inference_type_selection_tabs.disable()
+    if 'model_settings_card' in cards:
+        if enabled:
+            model_settings_card.enable()
+            text_prompt_textarea.enable()
+            class_input.enable()
+            image_region_selector.enable()
+            # previous_image_button.enable()
+            next_image_button.enable()
+            random_image_button.enable()
+            model_input_tabs.enable()
+        else:
+            model_settings_card.disable()
+            text_prompt_textarea.disable()
+            class_input.disable()
+            image_region_selector.disable()
+            # previous_image_button.disable()
+            next_image_button.disable()
+            random_image_button.disable()
+            model_input_tabs.disable()
+    if 'preview_card' in cards:
+        if enabled:
+            preview_card.enable()
+            grid_gallery.enable()
+            update_images_preview_button.enable()
+            update_predictions_preview_button.enable()
+        else:
+            preview_card.disable()
+            grid_gallery.disable()
+            update_images_preview_button.disable()
+            update_predictions_preview_button.disable()
+    if 'run_model_card' in cards:
+        if enabled:
+            run_model_card.enable()
+            keep_existed_annotations.enable()
+            output_project_name_input.enable()
+            select_output_destination.enable()
+        else:
+            run_model_card.disable()
+            keep_existed_annotations.disable()
+            output_project_name_input.disable()
+            select_output_destination.disable()
+    
+toggle_cards(['inference_type_selection_card', 'model_settings_card', 'preview_card', 'run_model_card'], enabled=False)
+set_model_type_button.disable()
+set_input_button.disable()
+run_model_button.disable()
 
 stepper = Stepper(
     widgets=[
