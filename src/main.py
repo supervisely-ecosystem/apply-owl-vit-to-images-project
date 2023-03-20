@@ -428,10 +428,17 @@ def update_predictions_preview():
     confidence_threshhold = confidence_threshhold_input.get_value()
     nms_threshhold = nms_threshhold_input.get_value()
 
-    model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch32")
-    processor = OwlViTProcessor.from_pretrained("google/owlvit-base-patch32")
-    model = model.to(g.DEVICE)
-    model.eval()
+    # for TEXT PROMPT
+    text_queries = text_prompt_textarea.get_value().split(";")
+    # for IMAGE REFERENCE
+    selected_bbox = image_region_selector.scaled_bbox
+    x0, y0, x1, y1 = *selected_bbox[0], *selected_bbox[1]
+
+    if IS_LOCAL_INFERENCE:
+        model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch32")
+        processor = OwlViTProcessor.from_pretrained("google/owlvit-base-patch32")
+        model = model.to(g.DEVICE)
+        model.eval()
 
     annotations_list = []
     for i, image_info in enumerate(PREVIEW_IMAGES_INFOS):
@@ -440,8 +447,6 @@ def update_predictions_preview():
 
         if IS_LOCAL_INFERENCE:
             if IS_IMAGE_PROMPT:
-                selected_bbox = image_region_selector.scaled_bbox
-                x0, y0, x1, y1 = np.array(selected_bbox).reshape(-1)
                 query_image = sly.image.read(get_image_path(ref_image_info.name))
                 query_image = query_image[y0:y1, x0:x1]
                 results = apply_model(
@@ -454,7 +459,6 @@ def update_predictions_preview():
                     nms_threshhold=nms_threshhold
                 )
             else:
-                text_queries = text_prompt_textarea.get_value().split(";")
                 results = apply_model(
                     image, 
                     target_sizes, 
@@ -476,9 +480,12 @@ def update_predictions_preview():
         else:
             if IS_IMAGE_PROMPT:
                 inference_settings = dict(
-                    query_image = query_image,
+                    mode = "reference_image",
+                    reference_bbox = [y0, x0, y1, x1],
+                    reference_image_id = image_region_selector.image_id,
+                    reference_class_name = class_input.get_value(),
                     confidence_threshold = confidence_threshhold,
-                    nms_threshhold=nms_threshhold,
+                    # nms_threshhold=nms_threshhold,
                 )
                 ann = g.api.task.send_request(
                     MODEL_DATA["session_id"],
@@ -489,6 +496,7 @@ def update_predictions_preview():
             else:
                 text_queries = text_prompt_textarea.get_value().split(";")
                 inference_settings = dict(
+                    mode = "text_prompt",
                     text_queries = text_queries,
                     confidence_threshold = confidence_threshhold,
                     nms_threshhold=nms_threshhold,
@@ -617,7 +625,7 @@ def run_model():
                 
                 text_queries = text_prompt_textarea.get_value().split(";")
                 selected_bbox = image_region_selector.scaled_bbox
-                x0, y0, x1, y1 = np.array(selected_bbox).reshape(-1)
+                x0, y0, x1, y1 = *selected_bbox[0], *selected_bbox[1]
                 
                 if IS_LOCAL_INFERENCE:
                     image = sly.image.read(get_image_path(image_info.name))
@@ -656,9 +664,12 @@ def run_model():
                 else:
                     if IS_IMAGE_PROMPT:
                         inference_settings = dict(
-                            query_image = query_image,
+                            mode = "reference_image",
+                            reference_bbox = [y0, x0, y1, x1],
+                            reference_image_id = image_region_selector.image_id,
+                            reference_class_name = class_input.get_value(),
                             confidence_threshold = confidence_threshhold,
-                            nms_threshhold=nms_threshhold,
+                            # nms_threshhold=nms_threshhold,
                         )
                         ann = g.api.task.send_request(
                             MODEL_DATA["session_id"],
@@ -668,6 +679,7 @@ def run_model():
                         )
                     else:
                         inference_settings = dict(
+                            mode = "text_prompt",
                             text_queries = text_queries,
                             confidence_threshold = confidence_threshhold,
                             nms_threshhold=nms_threshhold,
