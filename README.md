@@ -1,6 +1,6 @@
 <div align="center" markdown>
 
-<img src="#app_poster">
+<img src="docs/images/poster.png">
 
 # Owl-ViT-app
 Integration of the Owl-ViT model for class-agnostic object detection
@@ -11,20 +11,32 @@ Integration of the Owl-ViT model for class-agnostic object detection
   <a href="#Demo">Demo</a>
 </p>
 
-[![](https://img.shields.io/badge/supervisely-ecosystem-brightgreen)](https://ecosystem.supervise.ly/apps/supervisely-ecosystem/object-detection-training-template)
+[![](https://img.shields.io/badge/supervisely-ecosystem-brightgreen)](https://ecosystem.supervise.ly/apps/supervisely-ecosystem/apply-owl-vit-to-images-project)
 [![](https://img.shields.io/badge/slack-chat-green.svg?logo=slack)](https://supervise.ly/slack)
-![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/supervisely-ecosystem/object-detection-training-template)
-[![views](https://app.supervise.ly/img/badges/views/supervisely-ecosystem/object-detection-training-template.png)](https://supervise.ly)
-[![runs](https://app.supervise.ly/img/badges/runs/supervisely-ecosystem/object-detection-training-template.png)](https://supervise.ly)
+![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/supervisely-ecosystem/apply-owl-vit-to-images-project)
+[![views](https://app.supervise.ly/img/badges/views/supervisely-ecosystem/apply-owl-vit-to-images-project.png)](https://supervise.ly)
+[![runs](https://app.supervise.ly/img/badges/runs/supervisely-ecosystem/apply-owl-vit-to-images-project.png)](https://supervise.ly)
 
 </div>
 
 # Overview
-The application provides the basic template for training neural networks
+Application allows you to label projects images using Owl-ViT detection model.
 
-<img src="#" />
+Application key points:
 
-# How to use
-1. Run the application from the context menu of the images project
-2. Open the app and set up the training process for your model like hyperparameters, pretrained weights or logging intervals.
-3. Run the training and stop the application manually at the end.
+- Select project to label
+- Choose the model configuration for local run or run via [serve owl-vit app](https://github.com/supervisely-ecosystem/serve-owl-vit) 
+- Set up model input data as text-prompt or reference-image
+- Preview detection results
+- Apply model to project images and save new annotations to new project or add to existed  
+
+# Results screenshoot
+<details>
+<summary>Reference-image</summary>
+<img src="docs/images/screenshoot.png" />
+</details>
+
+<details>
+<summary>Text-prompt</summary>
+<img src="docs/images/screenshoot.png" />
+</details>
