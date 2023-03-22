@@ -44,7 +44,7 @@ for dataset in datasets_list:
     samples_count = (
         dataset.images_count
         if len(datasets_list) == 1
-        else dataset.count * (100 - len(datasets_list)) / 100
+        else dataset.images_count * (100 - len(datasets_list)) // 100
     )
     image_info_list += random.sample(g.api.image.get_list(dataset.id), samples_count)
     if len(image_info_list) >= 1000:
@@ -142,7 +142,7 @@ model_config_table = RadioTable(
     rows=[
         ["OWL-ViT base patch 32", "ViT-B/32","CLIP", "583 MB", "19.3", "16.9",],
         ["OWL-ViT base patch 16", "ViT-B/16","CLIP", "581 MB", "20.8", "17.1",],
-        ["OWL-ViT base patch 14", "ViT-L/14","CLIP", "1.65 GB", "34.6", "31.2",],
+        ["OWL-ViT large patch 14", "ViT-L/14","CLIP", "1.65 GB", "34.6", "31.2",],
     ], 
 )
 inference_type_selection_tabs = RadioTabs(
