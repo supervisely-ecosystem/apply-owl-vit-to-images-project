@@ -1,9 +1,8 @@
 import torch
 import supervisely as sly
 from supervisely.imaging.color import random_rgb
-from transformers import OwlViTProcessor, OwlViTForObjectDetection
-from transformers.image_utils import ImageFeatureExtractionMixin
 import src.sly_globals as g
+from torchvision.ops import nms
 
 OBJECT_COLORS = {}
 
@@ -22,7 +21,7 @@ def apply_model(images, target_sizes, model, processor, query_image=None, text_q
         results = processor.post_process_image_guided_detection(
             outputs=outputs,
             threshold=confidence_threshhold,
-            nms_threshold=nms_threshhold,
+            nms_threshold=1,
             target_sizes=target_sizes,
         )
     else:
@@ -39,10 +38,11 @@ def apply_model(images, target_sizes, model, processor, query_image=None, text_q
         )
     return results
 
-def predictions_to_anno(scores, boxes, labels, image_info, confidence_threshhold):
+def predictions_to_anno(scores, boxes, labels, image_info, confidence_threshhold: float = 0.5, nms_threshhold: float=0.5):
+    non_suppressed_indexes = nms(torch.Tensor(boxes), torch.Tensor(scores), nms_threshhold)
     new_annotation = sly.Annotation(img_size=(image_info.height, image_info.width))
-    for score, box, label in zip(scores, boxes, labels):
-        if score < confidence_threshhold:
+    for i, (score, box, label) in enumerate(zip(scores, boxes, labels)):
+        if score < confidence_threshhold or i not in non_suppressed_indexes:
             continue
         color = OBJECT_COLORS.get(label, random_rgb())
         if label not in OBJECT_COLORS.keys():

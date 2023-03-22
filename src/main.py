@@ -1,20 +1,16 @@
-import os
 import random
 from typing import List
 
 import torch
-import numpy as np
 import supervisely as sly
 from supervisely.app.widgets import (
     Button,
     Card,
     Progress,
     Text,
-    Empty,
     Container,
     Checkbox,
     Stepper,
-    ClassesTable,
     ImageRegionSelector,
     ProjectThumbnail,
     RadioTabs,
@@ -26,15 +22,13 @@ from supervisely.app.widgets import (
     SelectAppSession,
     DoneLabel,
     ModelInfo,
-    Switch,
     RadioGroup,
     RadioTable
 )
-import src.sly_globals as g
-
-from src.model import apply_model, predictions_to_anno, inference_json_anno_preprocessing
 from transformers import OwlViTProcessor, OwlViTForObjectDetection
-from transformers.image_utils import ImageFeatureExtractionMixin
+
+import src.sly_globals as g
+from src.model import apply_model, predictions_to_anno, inference_json_anno_preprocessing
 
 IS_LOCAL_INFERENCE = True
 IS_IMAGE_PROMPT = True
@@ -476,7 +470,7 @@ def update_predictions_preview():
                 labels = [f"{class_input.get_value()}_pred"] * len(boxes)
             else:
                 labels = [f"{text_queries[label]}_pred" for label in labels]
-            new_annotation = predictions_to_anno(scores, boxes, labels, image_info, confidence_threshhold)
+            new_annotation = predictions_to_anno(scores, boxes, labels, image_info, confidence_threshhold, nms_threshhold)
         else:
             if IS_IMAGE_PROMPT:
                 inference_settings = dict(
@@ -598,9 +592,6 @@ def run_model():
         elif selected_model == "OWL-ViT large patch 14":
             processor = OwlViTProcessor.from_pretrained("google/owlvit-large-patch14")
             model = OwlViTForObjectDetection.from_pretrained("google/owlvit-large-patch14")
-
-        # model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch32")
-        # processor = OwlViTProcessor.from_pretrained("google/owlvit-base-patch32")
         model = model.to(g.DEVICE)
         model.eval()
 
@@ -660,7 +651,7 @@ def run_model():
                         labels = [f"{class_input.get_value()}_pred"] * len(boxes)
                     else:
                         labels = [f"{text_queries[label]}_pred" for label in labels]
-                    ann = predictions_to_anno(scores, boxes, labels, image_info, confidence_threshhold)
+                    ann = predictions_to_anno(scores, boxes, labels, image_info, confidence_threshhold, nms_threshhold)
                 else:
                     if IS_IMAGE_PROMPT:
                         inference_settings = dict(
