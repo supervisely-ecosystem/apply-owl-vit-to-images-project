@@ -2,6 +2,7 @@ supervisely
 
 # For CLIP:
 torch>=1.10.2
+torchvision
 transformers[torch]
 
 # # code formatter
