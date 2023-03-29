@@ -2,7 +2,7 @@
 .DS_Store
 secret.env
 supervisely
-sly_project
+sly_projects
 data
 runs
 tensorboard_runs
