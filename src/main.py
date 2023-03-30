@@ -84,8 +84,8 @@ data_card = Card(
 )
 @dataset_selector.value_changed
 def on_dataset_selected(new_dataset_ids):
-    global IMAGES_INFO_LIST, CURRENT_REF_IMAGE_INDEX
-    
+    global IMAGES_INFO_LIST, CURRENT_REF_IMAGE_INDEX, REF_IMAGE_HISTORY
+    button_download_data.loading = True
     new_project_id = dataset_selector._project_selector.get_selected_id()
     if new_project_id != g.project_id:
         dataset_selector.disable()
@@ -93,10 +93,13 @@ def on_dataset_selected(new_dataset_ids):
         g.project_info = g.api.project.get_info_by_id(g.project_id)
         g.project_meta = sly.ProjectMeta.from_json(g.api.project.get_meta(g.project_id))
         g.workspace = g.api.workspace.get_info_by_id(g.project_info.workspace_id)
+        output_project_name_input.set_value(f"{g.project_info.name} - (Annotated)")
         dataset_selector.enable()
         g.DATASET_IDS = new_dataset_ids
         IMAGES_INFO_LIST = get_images_infos_for_preview()
         update_images_preview()
+        CURRENT_REF_IMAGE_INDEX = 0
+        REF_IMAGE_HISTORY = [CURRENT_REF_IMAGE_INDEX]
         image_region_selector.image_update(IMAGES_INFO_LIST[CURRENT_REF_IMAGE_INDEX])
     else:
         if set(g.DATASET_IDS) != set(new_dataset_ids):
@@ -104,6 +107,8 @@ def on_dataset_selected(new_dataset_ids):
             text_download_data.hide()
             IMAGES_INFO_LIST = get_images_infos_for_preview()
             update_images_preview()
+            CURRENT_REF_IMAGE_INDEX = 0
+            REF_IMAGE_HISTORY = [CURRENT_REF_IMAGE_INDEX]
             image_region_selector.image_update(IMAGES_INFO_LIST[CURRENT_REF_IMAGE_INDEX])
 
     sly.logger.info(f"Team: {g.team.id} \t Project: {g.project_info.id} \t Datasets: {g.DATASET_IDS}")
@@ -112,6 +117,7 @@ def on_dataset_selected(new_dataset_ids):
         button_download_data.hide()
     else:
         button_download_data.show()
+    button_download_data.loading = False
 
 
 @button_download_data.click
@@ -122,6 +128,13 @@ def download_data():
         button_download_data.enable()
         text_download_data.hide()
         button_download_data.text = "Select data"
+        set_model_type_button.disable()
+        set_model_type_button.text = 'Select model' 
+        set_input_button.disable()
+        set_input_button.text = 'Set model input' 
+        update_images_preview_button.disable()
+        update_predictions_preview_button.disable()
+        run_model_button.disable()
         stepper.set_active_step(1)
     else:
         button_download_data.disable()
@@ -265,6 +278,7 @@ def set_model_type():
             set_model_type_button.text = 'Select model'
             toggle_cards(['model_settings_card', 'preview_card', 'run_model_card'], enabled=False)
             set_input_button.disable()
+            set_input_button.text = 'Set model input'
             update_images_preview_button.disable()
             update_predictions_preview_button.disable()
             run_model_button.disable()
@@ -289,6 +303,7 @@ def set_model_type():
             set_model_type_button.text = 'Connect to model'
             toggle_cards(['model_settings_card', 'preview_card', 'run_model_card'], enabled=False)
             set_input_button.disable()
+            set_input_button.text = 'Set model input'
             update_images_preview_button.disable()
             update_predictions_preview_button.disable()
             run_model_button.disable()
@@ -372,6 +387,7 @@ def previous_image():
     image_region_selector.image_update(IMAGES_INFO_LIST[CURRENT_REF_IMAGE_INDEX])
     if CURRENT_REF_IMAGE_INDEX == REF_IMAGE_HISTORY[0]:
         previous_image_button.disable()
+    next_image_button.enable()
 
 @next_image_button.click
 def next_image():
@@ -381,8 +397,12 @@ def next_image():
             REF_IMAGE_HISTORY.index(CURRENT_REF_IMAGE_INDEX) + 1
         ]
     else:
-        CURRENT_REF_IMAGE_INDEX += 1
-        REF_IMAGE_HISTORY.append(CURRENT_REF_IMAGE_INDEX)
+        if CURRENT_REF_IMAGE_INDEX < len(IMAGES_INFO_LIST) - 1:
+            CURRENT_REF_IMAGE_INDEX += 1
+            REF_IMAGE_HISTORY.append(CURRENT_REF_IMAGE_INDEX)
+
+    if len(IMAGES_INFO_LIST) - 1 == CURRENT_REF_IMAGE_INDEX:
+        next_image_button.disable()
     REF_IMAGE_HISTORY = REF_IMAGE_HISTORY[-10:]
     image_region_selector.image_update(IMAGES_INFO_LIST[CURRENT_REF_IMAGE_INDEX])
     previous_image_button.enable()
@@ -394,8 +414,10 @@ def random_image():
     REF_IMAGE_HISTORY.append(CURRENT_REF_IMAGE_INDEX)
     REF_IMAGE_HISTORY = REF_IMAGE_HISTORY[-10:]
     image_region_selector.image_update(IMAGES_INFO_LIST[CURRENT_REF_IMAGE_INDEX])
-    previous_image_button.enable()
-    next_image_button.enable()
+    if CURRENT_REF_IMAGE_INDEX != REF_IMAGE_HISTORY[0]:
+        previous_image_button.enable()
+    if CURRENT_REF_IMAGE_INDEX < len(IMAGES_INFO_LIST) - 1:
+        next_image_button.enable()
 
 @set_input_button.click
 def set_model_input():
@@ -406,6 +428,7 @@ def set_model_input():
         update_images_preview_button.disable()
         update_predictions_preview_button.disable()
         run_model_button.disable()
+        stepper.set_active_step(3)
     else:
         set_input_button.text = "Change model input"
         toggle_cards(['model_settings_card'], enabled=False)
@@ -413,6 +436,7 @@ def set_model_input():
         update_images_preview_button.enable()
         update_predictions_preview_button.enable()
         run_model_button.enable()
+        stepper.set_active_step(5)
 
 model_input_tabs = RadioTabs(
     titles=["Reference image", "Text prompt"],
@@ -440,7 +464,7 @@ def model_input_changed(val):
     IS_IMAGE_PROMPT = True if val == 'Reference image' else False
 
 confidence_threshhold_input = InputNumber(value=0.5, min=00.1, max=1, step=0.01)
-nms_threshhold_input = InputNumber(value=1, min=0.01, max=1, step=0.01)
+nms_threshhold_input = InputNumber(value=0.5, min=0.01, max=1, step=0.01)
 field_confidence_threshhold = Field(
     title="Confidence threshold",
     description="Threshold for the minimum confidence that a detection must have to be displayed (higher values mean fewer boxes will be shown):",
@@ -630,6 +654,16 @@ run_model_button = Button("Run model")
 
 @run_model_button.click
 def run_model():
+    toggle_cards(['data_card', 'inference_type_selection_card', 'model_settings_card', 'preview_card', 'run_model_card'], enabled=False)
+    button_download_data.disable()
+    set_input_button.disable()
+    next_image_button.disable()
+    random_image_button.disable()
+    previous_image_button.disable()
+    set_model_type_button.disable()
+    update_images_preview_button.disable()
+    update_predictions_preview_button.disable()
+    output_project_thmb.hide()
     global IS_LOCAL_INFERENCE, IS_IMAGE_PROMPT, MODEL_DATA
     confidence_threshhold = confidence_threshhold_input.get_value()
     nms_threshhold = nms_threshhold_input.get_value()
@@ -781,6 +815,11 @@ def run_model():
     output_project_thmb.show()
     sly.logger.info("Project was successfully labeled")
 
+    toggle_cards(['run_model_card'], enabled=True)
+    output_project_thmb.show()
+    button_download_data.enable()
+    run_model_button.enable()
+
 output_project_thmb = ProjectThumbnail()
 output_project_thmb.hide()
 run_model_card = Card(
@@ -789,6 +828,7 @@ run_model_card = Card(
 )
 
 def toggle_cards(cards: List[str], enabled: bool = False):
+    global CURRENT_REF_IMAGE_INDEX, REF_IMAGE_HISTORY
     if 'data_card' in cards:
         if enabled:
             data_card.enable()
@@ -813,8 +853,12 @@ def toggle_cards(cards: List[str], enabled: bool = False):
             text_prompt_textarea.enable()
             class_input.enable()
             image_region_selector.enable()
-            # previous_image_button.enable()
-            next_image_button.enable()
+            if CURRENT_REF_IMAGE_INDEX != REF_IMAGE_HISTORY[0]:
+                previous_image_button.enable()
+            if CURRENT_REF_IMAGE_INDEX < len(IMAGES_INFO_LIST) - 1:
+                next_image_button.enable()
+            confidence_threshhold_input.enable()
+            nms_threshhold_input.enable()
             random_image_button.enable()
             model_input_tabs.enable()
         else:
@@ -822,8 +866,10 @@ def toggle_cards(cards: List[str], enabled: bool = False):
             text_prompt_textarea.disable()
             class_input.disable()
             image_region_selector.disable()
-            # previous_image_button.disable()
+            previous_image_button.disable()
             next_image_button.disable()
+            confidence_threshhold_input.disable()
+            nms_threshhold_input.disable()
             random_image_button.disable()
             model_input_tabs.disable()
     if 'preview_card' in cards:
