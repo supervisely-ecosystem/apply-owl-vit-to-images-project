@@ -1,7 +1,7 @@
 # Additional
 .DS_Store
 secret.env
-supervisely
+supervisely*
 sly_projects
 data
 runs
