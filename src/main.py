@@ -497,6 +497,7 @@ grid_gallery = GridGallery(
 update_images_preview_button = Button("New random images", icon="zmdi zmdi-refresh")
 @update_images_preview_button.click
 def update_images_preview():
+    update_predictions_preview_button.disable()
     global IMAGES_INFO_LIST
 
     grid_gallery.clean_up()
@@ -511,12 +512,14 @@ def update_images_preview():
         )
     global PREVIEW_IMAGES_INFOS
     PREVIEW_IMAGES_INFOS = NEW_PREVIEW_IMAGES_INFOS
+    update_predictions_preview_button.enable()
 
 update_predictions_preview_button = Button(
     "Predictions preview", icon="zmdi zmdi-labels"
 )
 @update_predictions_preview_button.click
 def update_predictions_preview():
+    update_images_preview_button.disable()
     global IS_LOCAL_INFERENCE, IS_IMAGE_PROMPT
     confidence_threshhold = confidence_threshhold_input.get_value()
     nms_threshhold = nms_threshhold_input.get_value()
@@ -528,8 +531,16 @@ def update_predictions_preview():
     x0, y0, x1, y1 = *selected_bbox[0], *selected_bbox[1]
 
     if IS_LOCAL_INFERENCE:
-        model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch32")
-        processor = OwlViTProcessor.from_pretrained("google/owlvit-base-patch32")
+        selected_model = MODEL_DATA['model']
+        if selected_model == "OWL-ViT base patch 32":
+            processor = OwlViTProcessor.from_pretrained("google/owlvit-base-patch32")
+            model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch32")
+        elif selected_model == "OWL-ViT base patch 16":
+            processor = OwlViTProcessor.from_pretrained("google/owlvit-base-patch16")
+            model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch16")
+        elif selected_model == "OWL-ViT large patch 14":
+            processor = OwlViTProcessor.from_pretrained("google/owlvit-large-patch14")
+            model = OwlViTForObjectDetection.from_pretrained("google/owlvit-large-patch14")
         model = model.to(g.DEVICE)
         model.eval()
 
@@ -618,6 +629,7 @@ def update_predictions_preview():
             title=image_info.name,
             column_index=int(i % g.COLUMNS_COUNT),
         )
+    update_images_preview_button.enable()
 
 preview_card = Card(
     title="Preview results",
@@ -647,178 +659,186 @@ select_output_destination = RadioGroup(
 def select_output_destination_changed(format):
     if format == "Save annotations to new project":
         output_project_name_field.show()
+        keep_existed_annotations.show()
     else:
         output_project_name_field.hide()
+        keep_existed_annotations.hide()
 run_model_button = Button("Run model")
 
 
 @run_model_button.click
 def run_model():
-    toggle_cards(['data_card', 'inference_type_selection_card', 'model_settings_card', 'preview_card', 'run_model_card'], enabled=False)
-    button_download_data.disable()
-    set_input_button.disable()
-    next_image_button.disable()
-    random_image_button.disable()
-    previous_image_button.disable()
-    set_model_type_button.disable()
-    update_images_preview_button.disable()
-    update_predictions_preview_button.disable()
-    output_project_thmb.hide()
-    global IS_LOCAL_INFERENCE, IS_IMAGE_PROMPT, MODEL_DATA
-    confidence_threshhold = confidence_threshhold_input.get_value()
-    nms_threshhold = nms_threshhold_input.get_value()
+    try:
+        toggle_cards(['data_card', 'inference_type_selection_card', 'model_settings_card', 'preview_card', 'run_model_card'], enabled=False)
+        button_download_data.disable()
+        set_input_button.disable()
+        next_image_button.disable()
+        random_image_button.disable()
+        previous_image_button.disable()
+        set_model_type_button.disable()
+        update_images_preview_button.disable()
+        update_predictions_preview_button.disable()
+        output_project_thmb.hide()
+        global IS_LOCAL_INFERENCE, IS_IMAGE_PROMPT, MODEL_DATA
+        confidence_threshhold = confidence_threshhold_input.get_value()
+        nms_threshhold = nms_threshhold_input.get_value()
 
-    output_destination = select_output_destination.get_value() 
-    if output_destination == "Save annotations to new project":
-        is_new_project = True
-        output_project_id = None
-    else:
-        is_new_project = False
-        output_project_id = g.project_id
+        output_destination = select_output_destination.get_value() 
+        if output_destination == "Save annotations to new project":
+            is_new_project = True
+            output_project_id = None
 
-    is_new_project = True if output_project_id is None else False
-    if output_project_id is None:
-        output_project_name = output_project_name_input.get_value()
-        if output_project_name.strip() == '':
-            output_project_name = f"{g.project_info.name} - (Annotated)"
-        output_project = g.api.project.create(
-            workspace_id=g.workspace.id,
-            name=output_project_name,
-            type=sly.ProjectType.IMAGES,
-            change_name_if_conflict=True,
-        )
-        output_project_id = output_project.id
-        output_project_meta = sly.ProjectMeta.from_json(g.api.project.get_meta(output_project_id))
-        output_project_meta = output_project_meta.merge(g.project_meta)
+            output_project_name = output_project_name_input.get_value()
+            if output_project_name.strip() == '':
+                output_project_name = f"{g.project_info.name} - (Annotated)"
+            output_project = g.api.project.create(
+                workspace_id=g.workspace.id,
+                name=output_project_name,
+                type=sly.ProjectType.IMAGES,
+                change_name_if_conflict=True,
+            )
+            output_project_id = output_project.id
+            output_project_meta = sly.ProjectMeta.from_json(g.api.project.get_meta(output_project_id))
+            if keep_existed_annotations.is_checked():
+                output_project_meta = output_project_meta.merge(g.project_meta)
+        else:
+            is_new_project = False
+            output_project_id = g.project_id
+            output_project_meta = sly.ProjectMeta.from_json(g.api.project.get_meta(output_project_id))
 
-    if IS_LOCAL_INFERENCE:
-        selected_model = MODEL_DATA['model']
-        if selected_model == "OWL-ViT base patch 32":
-            processor = OwlViTProcessor.from_pretrained("google/owlvit-base-patch32")
-            model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch32")
-        elif selected_model == "OWL-ViT base patch 16":
-            processor = OwlViTProcessor.from_pretrained("google/owlvit-base-patch16")
-            model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch16")
-        elif selected_model == "OWL-ViT large patch 14":
-            processor = OwlViTProcessor.from_pretrained("google/owlvit-large-patch14")
-            model = OwlViTForObjectDetection.from_pretrained("google/owlvit-large-patch14")
-        model = model.to(g.DEVICE)
-        model.eval()
+        if IS_LOCAL_INFERENCE:
+            selected_model = MODEL_DATA['model']
+            if selected_model == "OWL-ViT base patch 32":
+                processor = OwlViTProcessor.from_pretrained("google/owlvit-base-patch32")
+                model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch32")
+            elif selected_model == "OWL-ViT base patch 16":
+                processor = OwlViTProcessor.from_pretrained("google/owlvit-base-patch16")
+                model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch16")
+            elif selected_model == "OWL-ViT large patch 14":
+                processor = OwlViTProcessor.from_pretrained("google/owlvit-large-patch14")
+                model = OwlViTForObjectDetection.from_pretrained("google/owlvit-large-patch14")
+            model = model.to(g.DEVICE)
+            model.eval()
 
-    # apply models to project
-    with apply_progress_bar(message="Applying model to project...", total=g.project_info.images_count) as pbar:
-        datasets_list = [g.api.dataset.get_info_by_id(ds_id) for ds_id in g.DATASET_IDS]
-        for dataset in datasets_list:
-            # annotate image in its dataset
-            if is_new_project is True:
-                output_dataset = g.api.dataset.create(
-                    project_id=output_project_id, name=dataset.name, change_name_if_conflict=True
-                )
-            else:
-                output_dataset = dataset
-                
-            images_info = g.api.image.get_list(dataset.id)
-            for image_info in images_info:
-                if keep_existed_annotations.is_checked():
-                    image_ann_json = g.api.annotation.download(image_info.id).annotation
-                    image_ann = sly.Annotation.from_json(image_ann_json, output_project_meta)
+        # apply models to project
+        with apply_progress_bar(message="Applying model to project...", total=g.project_info.images_count) as pbar:
+            datasets_list = [g.api.dataset.get_info_by_id(ds_id) for ds_id in g.DATASET_IDS]
+            for dataset in datasets_list:
+                # annotate image in its dataset
+                if is_new_project:
+                    output_dataset = g.api.dataset.create(
+                        project_id=output_project_id, name=dataset.name, change_name_if_conflict=True
+                    )
                 else:
-                    image_ann = sly.Annotation(img_size=(image_info.height, image_info.width))
-                
-                text_queries = text_prompt_textarea.get_value().split(";")
-                selected_bbox = image_region_selector.scaled_bbox
-                x0, y0, x1, y1 = *selected_bbox[0], *selected_bbox[1]
-                
-                if IS_LOCAL_INFERENCE:
-                    image = sly.image.read(get_image_path(image_info.name))
-                    target_sizes = torch.Tensor([[image_info.height, image_info.width]]).to(g.DEVICE)
-
-                    if IS_IMAGE_PROMPT:
-                        ref_image_info = IMAGES_INFO_LIST[CURRENT_REF_IMAGE_INDEX]
-                        query_image = sly.image.read(get_image_path(ref_image_info.name))
-                        query_image = query_image[y0:y1, x0:x1]
-                        results = apply_model(
-                            image, 
-                            target_sizes, 
-                            model, 
-                            processor, 
-                            query_image, 
-                            confidence_threshhold=confidence_threshhold, 
-                            nms_threshhold=nms_threshhold
-                        )
+                    output_dataset = dataset
+                    
+                images_info = g.api.image.get_list(dataset.id)
+                for image_info in images_info:
+                    if keep_existed_annotations.is_checked() or not is_new_project:
+                        image_ann_json = g.api.annotation.download(image_info.id).annotation
+                        image_ann = sly.Annotation.from_json(image_ann_json, output_project_meta)
                     else:
-                        results = apply_model(
-                            image, 
-                            target_sizes, 
-                            model, 
-                            processor, 
-                            text_queries=text_queries, 
-                            confidence_threshhold=confidence_threshhold, 
-                            nms_threshhold=nms_threshhold
-                        )
-                    scores = results[0]["scores"].cpu().detach().numpy()
-                    boxes = results[0]["boxes"].cpu().detach().numpy()
-                    labels = results[0]["labels"]
-                    if labels is None:
-                        labels = [f"{class_input.get_value()}_pred"] * len(boxes)
+                        image_ann = sly.Annotation(img_size=(image_info.height, image_info.width))
+                    
+                    text_queries = text_prompt_textarea.get_value().split(";")
+                    selected_bbox = image_region_selector.scaled_bbox
+                    x0, y0, x1, y1 = *selected_bbox[0], *selected_bbox[1]
+                    
+                    if IS_LOCAL_INFERENCE:
+                        image = sly.image.read(get_image_path(image_info.name))
+                        target_sizes = torch.Tensor([[image_info.height, image_info.width]]).to(g.DEVICE)
+
+                        if IS_IMAGE_PROMPT:
+                            ref_image_info = IMAGES_INFO_LIST[CURRENT_REF_IMAGE_INDEX]
+                            query_image = sly.image.read(get_image_path(ref_image_info.name))
+                            query_image = query_image[y0:y1, x0:x1]
+                            results = apply_model(
+                                image, 
+                                target_sizes, 
+                                model, 
+                                processor, 
+                                query_image, 
+                                confidence_threshhold=confidence_threshhold, 
+                                nms_threshhold=nms_threshhold
+                            )
+                        else:
+                            results = apply_model(
+                                image, 
+                                target_sizes, 
+                                model, 
+                                processor, 
+                                text_queries=text_queries, 
+                                confidence_threshhold=confidence_threshhold, 
+                                nms_threshhold=nms_threshhold
+                            )
+                        scores = results[0]["scores"].cpu().detach().numpy()
+                        boxes = results[0]["boxes"].cpu().detach().numpy()
+                        labels = results[0]["labels"]
+                        if labels is None:
+                            labels = [f"{class_input.get_value()}_pred"] * len(boxes)
+                        else:
+                            labels = [f"{text_queries[label]}_pred" for label in labels]
+                        ann = predictions_to_anno(scores, boxes, labels, image_info, confidence_threshhold, nms_threshhold)
                     else:
-                        labels = [f"{text_queries[label]}_pred" for label in labels]
-                    ann = predictions_to_anno(scores, boxes, labels, image_info, confidence_threshhold, nms_threshhold)
-                else:
-                    if IS_IMAGE_PROMPT:
-                        inference_settings = dict(
-                            mode = "reference_image",
-                            reference_bbox = [y0, x0, y1, x1],
-                            reference_image_id = image_region_selector.image_id,
-                            reference_class_name = class_input.get_value(),
-                            confidence_threshold = confidence_threshhold,
-                            # nms_threshhold=nms_threshhold,
-                        )
-                        ann = g.api.task.send_request(
-                            MODEL_DATA["session_id"],
-                            "inference_image_id",
-                            data={"image_id": image_info.id, "settings": inference_settings},
-                            timeout=500,
-                        )
-                    else:
-                        inference_settings = dict(
-                            mode = "text_prompt",
-                            text_queries = text_queries,
-                            confidence_threshold = confidence_threshhold,
-                            nms_threshhold=nms_threshhold,
-                        )
-                        ann = g.api.task.send_request(
-                            MODEL_DATA["session_id"],
-                            "inference_image_id",
-                            data={"image_id": image_info.id, "settings": inference_settings},
-                            timeout=500,
-                        )
-                    ann = inference_json_anno_preprocessing(ann, output_project_meta)
-                    labels = [label.obj_class.name for label in ann.labels]
-                    if output_project_meta.get_tag_meta('confidence') is None:
-                        output_project_meta = output_project_meta.add_tag_meta(sly.TagMeta('confidence', sly.TagValueType.ANY_NUMBER))
+                        if IS_IMAGE_PROMPT:
+                            inference_settings = dict(
+                                mode = "reference_image",
+                                reference_bbox = [y0, x0, y1, x1],
+                                reference_image_id = image_region_selector.image_id,
+                                reference_class_name = class_input.get_value(),
+                                confidence_threshold = confidence_threshhold,
+                                # nms_threshhold=nms_threshhold,
+                            )
+                            ann = g.api.task.send_request(
+                                MODEL_DATA["session_id"],
+                                "inference_image_id",
+                                data={"image_id": image_info.id, "settings": inference_settings},
+                                timeout=500,
+                            )
+                        else:
+                            inference_settings = dict(
+                                mode = "text_prompt",
+                                text_queries = text_queries,
+                                confidence_threshold = confidence_threshhold,
+                                nms_threshhold=nms_threshhold,
+                            )
+                            ann = g.api.task.send_request(
+                                MODEL_DATA["session_id"],
+                                "inference_image_id",
+                                data={"image_id": image_info.id, "settings": inference_settings},
+                                timeout=500,
+                            )
+                        ann = inference_json_anno_preprocessing(ann, output_project_meta)
+                        labels = [label.obj_class.name for label in ann.labels]
+                        if output_project_meta.get_tag_meta('confidence') is None:
+                            output_project_meta = output_project_meta.add_tag_meta(sly.TagMeta('confidence', sly.TagValueType.ANY_NUMBER))
 
-                for target_class_name in set(labels):
-                    target_class = output_project_meta.get_obj_class(target_class_name)
-                    if target_class is None:  # if obj class is not in output project meta
-                        target_class = sly.ObjClass(target_class_name, sly.Rectangle)
-                        output_project_meta = output_project_meta.add_obj_class(target_class)
-                
-                image_ann = image_ann.add_labels(ann.labels)
-                g.api.project.update_meta(output_project_id, output_project_meta.to_json())
-                new_image_info = g.api.image.copy(dst_dataset_id=output_dataset.id, id=image_info.id, change_name_if_conflict=True, with_annotations=False)
-                g.api.annotation.upload_ann(new_image_info.id, image_ann)
-                pbar.update()
+                    for target_class_name in set(labels):
+                        target_class = output_project_meta.get_obj_class(target_class_name)
+                        if target_class is None:  # if obj class is not in output project meta
+                            target_class = sly.ObjClass(target_class_name, sly.Rectangle)
+                            output_project_meta = output_project_meta.add_obj_class(target_class)
+                    
+                    image_ann = image_ann.add_labels(ann.labels)
+                    g.api.project.update_meta(output_project_id, output_project_meta.to_json())
+                    if is_new_project:
+                        image_info = g.api.image.copy(dst_dataset_id=output_dataset.id, id=image_info.id, change_name_if_conflict=True, with_annotations=False)
+                    g.api.annotation.upload_ann(image_info.id, image_ann)
+                    pbar.update()
 
-    output_project_info = g.api.project.get_info_by_id(output_project_id)
-    output_project_thmb.set(info=output_project_info)
-    output_project_thmb.show()
-    sly.logger.info("Project was successfully labeled")
-
-    toggle_cards(['run_model_card'], enabled=True)
-    output_project_thmb.show()
-    button_download_data.enable()
-    run_model_button.enable()
+        output_project_info = g.api.project.get_info_by_id(output_project_id)
+        output_project_thmb.set(info=output_project_info)
+        output_project_thmb.show()
+        project_meta = sly.ProjectMeta.from_json(g.api.project.get_meta(output_project_id))
+        sly.logger.info("Project was successfully labeled")
+    except Exception as e:
+        sly.logger.error('Something went wrong. Error: {e}')
+    finally:
+        toggle_cards(['run_model_card'], enabled=True)
+        button_download_data.enable()
+        set_input_button.enable()
+        set_model_type_button.enable()
+        run_model_button.enable()
 
 output_project_thmb = ProjectThumbnail()
 output_project_thmb.hide()
