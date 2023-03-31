@@ -645,7 +645,6 @@ preview_card = Card(
 ### Applying model card
 #######################
 keep_existed_annotations = Checkbox('Save existed project annotations')
-keep_existed_annotations.hide()
 output_project_name_input = Input(value=f"{g.project_info.name} - (Annotated)")
 output_project_name_field = Field(output_project_name_input, "Output project name")
 apply_progress_bar = Progress(hide_on_finish=False)
@@ -700,11 +699,12 @@ def run_model():
             )
             output_project_id = output_project.id
             output_project_meta = sly.ProjectMeta.from_json(g.api.project.get_meta(output_project_id))
-            output_project_meta = output_project_meta.merge(g.project_meta)
+            if keep_existed_annotations.is_checked():
+                output_project_meta = output_project_meta.merge(g.project_meta)
         else:
             is_new_project = False
             output_project_id = g.project_id
-            output_project_meta = g.project_meta
+            output_project_meta = sly.ProjectMeta.from_json(g.api.project.get_meta(output_project_id))
 
         if IS_LOCAL_INFERENCE:
             selected_model = MODEL_DATA['model']
@@ -734,7 +734,7 @@ def run_model():
                     
                 images_info = g.api.image.get_list(dataset.id)
                 for image_info in images_info:
-                    if keep_existed_annotations.is_checked():
+                    if keep_existed_annotations.is_checked() or not is_new_project:
                         image_ann_json = g.api.annotation.download(image_info.id).annotation
                         image_ann = sly.Annotation.from_json(image_ann_json, output_project_meta)
                     else:
@@ -829,12 +829,15 @@ def run_model():
         output_project_info = g.api.project.get_info_by_id(output_project_id)
         output_project_thmb.set(info=output_project_info)
         output_project_thmb.show()
+        project_meta = sly.ProjectMeta.from_json(g.api.project.get_meta(output_project_id))
         sly.logger.info("Project was successfully labeled")
     except Exception as e:
         sly.logger.error('Something went wrong. Error: {e}')
     finally:
         toggle_cards(['run_model_card'], enabled=True)
         button_download_data.enable()
+        set_input_button.enable()
+        set_model_type_button.enable()
         run_model_button.enable()
 
 output_project_thmb = ProjectThumbnail()
