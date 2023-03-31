@@ -1,4 +1,6 @@
+import os
 import random
+import shutil
 from typing import List
 
 import torch
@@ -7,7 +9,6 @@ from supervisely.app.widgets import (
     Button,
     Card,
     Progress,
-    Text,
     Container,
     Checkbox,
     Stepper,
@@ -23,7 +24,8 @@ from supervisely.app.widgets import (
     DoneLabel,
     ModelInfo,
     RadioGroup,
-    RadioTable
+    RadioTable,
+    SelectDataset,
 )
 from transformers import OwlViTProcessor, OwlViTForObjectDetection
 
@@ -38,18 +40,23 @@ REF_IMAGE_HISTORY = [CURRENT_REF_IMAGE_INDEX]
 MODEL_DATA = {}
 
 # fetching some images for preview
-datasets_list = g.api.dataset.get_list(g.project_id)
-image_info_list = []
-for dataset in datasets_list:
-    samples_count = (
-        dataset.images_count
-        if len(datasets_list) == 1
-        else dataset.images_count * (100 - len(datasets_list)) // 100
-    )
-    image_info_list += random.sample(g.api.image.get_list(dataset.id), samples_count)
-    if len(image_info_list) >= 1000:
-        break
-ref_image_info = image_info_list[CURRENT_REF_IMAGE_INDEX]
+def get_images_infos_for_preview():
+    if len(g.DATASET_IDS) > 0:
+        datasets_list = [g.api.dataset.get_info_by_id(ds_id) for ds_id in g.DATASET_IDS]
+    else:
+        datasets_list = g.api.dataset.get_list(g.project_id)
+    IMAGES_INFO_LIST = []
+    for dataset in datasets_list:
+        samples_count = (
+            dataset.images_count
+            if len(datasets_list) == 1
+            else dataset.images_count * (100 - len(datasets_list)) // 100
+        )
+        IMAGES_INFO_LIST += random.sample(g.api.image.get_list(dataset.id), samples_count)
+        if len(IMAGES_INFO_LIST) >= 1000:
+            break
+    return IMAGES_INFO_LIST
+IMAGES_INFO_LIST = get_images_infos_for_preview()
 
 
 def get_image_path(image_name: str) -> str:
@@ -57,67 +64,149 @@ def get_image_path(image_name: str) -> str:
         if dataset.item_exists(image_name):
             return dataset.get_img_path(image_name)
 
-
 ######################
 ### Input project card
 ######################
-project_preview = ProjectThumbnail(g.project_info)
+dataset_selector = SelectDataset(project_id=g.project_id, multiselect=True, select_all_datasets=True)
+text_download_data = DoneLabel("Data was successfully downloaded.")
+text_download_data.hide()
+button_download_data = Button("Select data")
 progress_bar_download_data = Progress(hide_on_finish=False)
 progress_bar_download_data.hide()
-text_download_data = Text("Data has been successfully downloaded", status="success")
-text_download_data.hide()
-button_download_data = Button("Download")
+data_card = Card(
+    title="Input data selection", 
+    content=Container([
+        dataset_selector,
+        progress_bar_download_data,
+        text_download_data,
+        button_download_data,
+    ])
+)
+@dataset_selector.value_changed
+def on_dataset_selected(new_dataset_ids):
+    global IMAGES_INFO_LIST, CURRENT_REF_IMAGE_INDEX, REF_IMAGE_HISTORY
+    button_download_data.loading = True
+    new_project_id = dataset_selector._project_selector.get_selected_id()
+    if new_project_id != g.project_id:
+        dataset_selector.disable()
+        g.project_id = new_project_id
+        g.project_info = g.api.project.get_info_by_id(g.project_id)
+        g.project_meta = sly.ProjectMeta.from_json(g.api.project.get_meta(g.project_id))
+        g.workspace = g.api.workspace.get_info_by_id(g.project_info.workspace_id)
+        output_project_name_input.set_value(f"{g.project_info.name} - (Annotated)")
+        dataset_selector.enable()
+        g.DATASET_IDS = new_dataset_ids
+        IMAGES_INFO_LIST = get_images_infos_for_preview()
+        update_images_preview()
+        CURRENT_REF_IMAGE_INDEX = 0
+        REF_IMAGE_HISTORY = [CURRENT_REF_IMAGE_INDEX]
+        image_region_selector.image_update(IMAGES_INFO_LIST[CURRENT_REF_IMAGE_INDEX])
+    else:
+        if set(g.DATASET_IDS) != set(new_dataset_ids):
+            g.DATASET_IDS = new_dataset_ids
+            text_download_data.hide()
+            IMAGES_INFO_LIST = get_images_infos_for_preview()
+            update_images_preview()
+            CURRENT_REF_IMAGE_INDEX = 0
+            REF_IMAGE_HISTORY = [CURRENT_REF_IMAGE_INDEX]
+            image_region_selector.image_update(IMAGES_INFO_LIST[CURRENT_REF_IMAGE_INDEX])
+
+    sly.logger.info(f"Team: {g.team.id} \t Project: {g.project_info.id} \t Datasets: {g.DATASET_IDS}")
+    
+    if len(new_dataset_ids) == 0:
+        button_download_data.hide()
+    else:
+        button_download_data.show()
+    button_download_data.loading = False
+
 
 @button_download_data.click
 def download_data():
-    try:
-        if sly.fs.dir_exists(g.project_dir):
-            sly.logger.info("Data already downloaded.")
-        else:
-            button_download_data.hide()
-            progress_bar_download_data.show()
-            sly.fs.mkdir(g.project_dir)
-            with progress_bar_download_data(
-                message=f"Processing images...", total=g.project_info.items_count
-            ) as pbar:
-                sly.Project.download(
-                    api=g.api,
-                    project_id=g.project_id,
-                    dest_dir=g.project_dir,
-                    batch_size=100,
-                    progress_cb=pbar.update,
-                    only_image_tags=False,
-                    save_image_info=True,
-                )
-            sly.logger.info("Data successfully downloaded.")
-        g.project_fs = sly.Project(g.project_dir, sly.OpenMode.READ)
-        progress_bar_download_data.hide()
-        button_download_data.hide()
-        text_download_data.show()
-        toggle_cards(['inference_type_selection_card'], enabled=True)
-        set_model_type_button.enable()
-        stepper.set_active_step(2)
-    except Exception as e:
-        sly.logger.info("Something went wrong.")
-        progress_bar_download_data.hide()
-        button_download_data.show()
-        text_download_data.set("Data download failed", status="error")
-        text_download_data.show()
+    if data_card.is_disabled() is True:
+        toggle_cards(['data_card'], enabled=True)
         toggle_cards(['inference_type_selection_card', 'model_settings_card', 'preview_card', 'run_model_card'], enabled=False)
+        button_download_data.enable()
+        text_download_data.hide()
+        button_download_data.text = "Select data"
         set_model_type_button.disable()
+        set_model_type_button.text = 'Select model' 
+        set_input_button.disable()
+        set_input_button.text = 'Set model input' 
+        update_images_preview_button.disable()
+        update_predictions_preview_button.disable()
+        run_model_button.disable()
         stepper.set_active_step(1)
-data_card = Card(
-    title="Input data",
-    content=Container(
-        [
-            project_preview,
-            progress_bar_download_data,
-            text_download_data,
-            button_download_data,
-        ]
-    ),
-)
+    else:
+        button_download_data.disable()
+        toggle_cards(['data_card', 'inference_type_selection_card', 'model_settings_card', 'preview_card', 'run_model_card'], enabled=False)
+        g.project_dir = os.path.join(g.projects_dir, str(g.project_id))
+        try:
+            if sly.fs.dir_exists(g.project_dir):
+                tmp_project = sly.Project(g.project_dir, sly.OpenMode.READ)
+                selected_datasets = [g.api.dataset.get_info_by_id(id) for id in g.DATASET_IDS]
+                missed_datasets = [ds for ds in selected_datasets if ds.name not in tmp_project.datasets.keys()]
+                missed_datasets_ids = [ds.id for ds in missed_datasets]
+                missed_items_cnt = sum([ds.items_count for ds in missed_datasets])
+                if len(missed_datasets) > 0:
+                    sly.logger.info(f"Datasets {missed_datasets_ids} were missed in project directory: {g.project_dir}.")
+                    temp_project_dir = os.path.join(g.projects_dir, 'temp_project')
 
+                    progress_bar_download_data.show()
+                    with progress_bar_download_data(
+                        message=f"Processing images...", total=missed_items_cnt
+                    ) as pbar:
+                        sly.Project.download(
+                            api=g.api,
+                            project_id=g.project_id,
+                            dest_dir=temp_project_dir,
+                            batch_size=100,
+                            dataset_ids=missed_datasets_ids,
+                            progress_cb=pbar.update,
+                            only_image_tags=False,
+                            save_image_info=True,
+                        )
+                    for ds in missed_datasets:
+                        src_ds_path = os.path.join(temp_project_dir, ds.name)
+                        dst_ds_path = os.path.join(g.project_dir, ds.name)
+                        shutil.move(src_ds_path, dst_ds_path)
+                    sly.fs.remove_dir(temp_project_dir)
+                    sly.logger.info("Missed datasets was succesfully downloaded.")
+                else:
+                    sly.logger.info("Data already downloaded.")
+            else:
+                progress_bar_download_data.show()
+                sly.fs.mkdir(g.project_dir)
+                with progress_bar_download_data(
+                    message=f"Processing images...", total=g.project_info.items_count
+                ) as pbar:
+                    sly.Project.download(
+                        api=g.api,
+                        project_id=g.project_id,
+                        dest_dir=g.project_dir,
+                        batch_size=100,
+                        dataset_ids=g.DATASET_IDS,
+                        progress_cb=pbar.update,
+                        only_image_tags=False,
+                        save_image_info=True,
+                    )
+                sly.logger.info("Data successfully downloaded.")
+            g.project_fs = sly.Project(g.project_dir, sly.OpenMode.READ)
+            button_download_data.text = 'Change data' 
+            text_download_data.show()
+            toggle_cards(['inference_type_selection_card'], enabled=True)
+            set_model_type_button.enable()
+            stepper.set_active_step(2)
+        except Exception as e:
+            sly.logger.info("Something went wrong.")
+            button_download_data.text = 'Select data' 
+            text_download_data.set("Data download failed", status="error")
+            text_download_data.show()
+            toggle_cards(['inference_type_selection_card', 'model_settings_card', 'preview_card', 'run_model_card'], enabled=False)
+            set_model_type_button.disable()
+            stepper.set_active_step(1)
+        finally:
+            button_download_data.enable()
+            progress_bar_download_data.hide()
 
 ############################
 ### Inference type selection
@@ -189,6 +278,7 @@ def set_model_type():
             set_model_type_button.text = 'Select model'
             toggle_cards(['model_settings_card', 'preview_card', 'run_model_card'], enabled=False)
             set_input_button.disable()
+            set_input_button.text = 'Set model input'
             update_images_preview_button.disable()
             update_predictions_preview_button.disable()
             run_model_button.disable()
@@ -213,6 +303,7 @@ def set_model_type():
             set_model_type_button.text = 'Connect to model'
             toggle_cards(['model_settings_card', 'preview_card', 'run_model_card'], enabled=False)
             set_input_button.disable()
+            set_input_button.text = 'Set model input'
             update_images_preview_button.disable()
             update_predictions_preview_button.disable()
             run_model_button.disable()
@@ -270,9 +361,7 @@ class_input_field = Field(
     title="Class name",
     description="All detected objects will be added to project/dataset with this class name",
 )
-image_region_selector = ImageRegionSelector(
-    image_info=ref_image_info, widget_width="500px", widget_height="500px"
-)
+image_region_selector = ImageRegionSelector(widget_width="500px", widget_height="500px")
 @image_region_selector.bbox_changed
 def bbox_updated(new_scaled_bbox):
     sly.logger.info(f"new_scaled_bbox: {new_scaled_bbox}")
@@ -295,9 +384,10 @@ def previous_image():
     CURRENT_REF_IMAGE_INDEX = REF_IMAGE_HISTORY[
         -(REF_IMAGE_HISTORY[::-1].index(CURRENT_REF_IMAGE_INDEX) + 2)
     ]
-    image_region_selector.image_update(image_info_list[CURRENT_REF_IMAGE_INDEX])
+    image_region_selector.image_update(IMAGES_INFO_LIST[CURRENT_REF_IMAGE_INDEX])
     if CURRENT_REF_IMAGE_INDEX == REF_IMAGE_HISTORY[0]:
         previous_image_button.disable()
+    next_image_button.enable()
 
 @next_image_button.click
 def next_image():
@@ -307,21 +397,27 @@ def next_image():
             REF_IMAGE_HISTORY.index(CURRENT_REF_IMAGE_INDEX) + 1
         ]
     else:
-        CURRENT_REF_IMAGE_INDEX += 1
-        REF_IMAGE_HISTORY.append(CURRENT_REF_IMAGE_INDEX)
+        if CURRENT_REF_IMAGE_INDEX < len(IMAGES_INFO_LIST) - 1:
+            CURRENT_REF_IMAGE_INDEX += 1
+            REF_IMAGE_HISTORY.append(CURRENT_REF_IMAGE_INDEX)
+
+    if len(IMAGES_INFO_LIST) - 1 == CURRENT_REF_IMAGE_INDEX:
+        next_image_button.disable()
     REF_IMAGE_HISTORY = REF_IMAGE_HISTORY[-10:]
-    image_region_selector.image_update(image_info_list[CURRENT_REF_IMAGE_INDEX])
+    image_region_selector.image_update(IMAGES_INFO_LIST[CURRENT_REF_IMAGE_INDEX])
     previous_image_button.enable()
 
 @random_image_button.click
 def random_image():
     global CURRENT_REF_IMAGE_INDEX, REF_IMAGE_HISTORY
-    CURRENT_REF_IMAGE_INDEX = random.randint(0, len(image_info_list) - 1)
+    CURRENT_REF_IMAGE_INDEX = random.randint(0, len(IMAGES_INFO_LIST) - 1)
     REF_IMAGE_HISTORY.append(CURRENT_REF_IMAGE_INDEX)
     REF_IMAGE_HISTORY = REF_IMAGE_HISTORY[-10:]
-    image_region_selector.image_update(image_info_list[CURRENT_REF_IMAGE_INDEX])
-    previous_image_button.enable()
-    next_image_button.enable()
+    image_region_selector.image_update(IMAGES_INFO_LIST[CURRENT_REF_IMAGE_INDEX])
+    if CURRENT_REF_IMAGE_INDEX != REF_IMAGE_HISTORY[0]:
+        previous_image_button.enable()
+    if CURRENT_REF_IMAGE_INDEX < len(IMAGES_INFO_LIST) - 1:
+        next_image_button.enable()
 
 @set_input_button.click
 def set_model_input():
@@ -332,6 +428,7 @@ def set_model_input():
         update_images_preview_button.disable()
         update_predictions_preview_button.disable()
         run_model_button.disable()
+        stepper.set_active_step(3)
     else:
         set_input_button.text = "Change model input"
         toggle_cards(['model_settings_card'], enabled=False)
@@ -339,6 +436,7 @@ def set_model_input():
         update_images_preview_button.enable()
         update_predictions_preview_button.enable()
         run_model_button.enable()
+        stepper.set_active_step(5)
 
 model_input_tabs = RadioTabs(
     titles=["Reference image", "Text prompt"],
@@ -366,7 +464,7 @@ def model_input_changed(val):
     IS_IMAGE_PROMPT = True if val == 'Reference image' else False
 
 confidence_threshhold_input = InputNumber(value=0.5, min=00.1, max=1, step=0.01)
-nms_threshhold_input = InputNumber(value=1, min=0.01, max=1, step=0.01)
+nms_threshhold_input = InputNumber(value=0.5, min=0.01, max=1, step=0.01)
 field_confidence_threshhold = Field(
     title="Confidence threshold",
     description="Threshold for the minimum confidence that a detection must have to be displayed (higher values mean fewer boxes will be shown):",
@@ -399,10 +497,12 @@ grid_gallery = GridGallery(
 update_images_preview_button = Button("New random images", icon="zmdi zmdi-refresh")
 @update_images_preview_button.click
 def update_images_preview():
+    global IMAGES_INFO_LIST
+
     grid_gallery.clean_up()
     NEW_PREVIEW_IMAGES_INFOS = []
     for i in range(g.PREVIEW_IMAGES_COUNT):
-        img_info = random.choice(image_info_list)
+        img_info = random.choice(IMAGES_INFO_LIST)
         NEW_PREVIEW_IMAGES_INFOS.append(img_info)
         grid_gallery.append(
             title=img_info.name,
@@ -411,7 +511,6 @@ def update_images_preview():
         )
     global PREVIEW_IMAGES_INFOS
     PREVIEW_IMAGES_INFOS = NEW_PREVIEW_IMAGES_INFOS
-update_images_preview()
 
 update_predictions_preview_button = Button(
     "Predictions preview", icon="zmdi zmdi-labels"
@@ -441,6 +540,7 @@ def update_predictions_preview():
 
         if IS_LOCAL_INFERENCE:
             if IS_IMAGE_PROMPT:
+                ref_image_info = IMAGES_INFO_LIST[CURRENT_REF_IMAGE_INDEX]
                 query_image = sly.image.read(get_image_path(ref_image_info.name))
                 query_image = query_image[y0:y1, x0:x1]
                 results = apply_model(
@@ -554,6 +654,16 @@ run_model_button = Button("Run model")
 
 @run_model_button.click
 def run_model():
+    toggle_cards(['data_card', 'inference_type_selection_card', 'model_settings_card', 'preview_card', 'run_model_card'], enabled=False)
+    button_download_data.disable()
+    set_input_button.disable()
+    next_image_button.disable()
+    random_image_button.disable()
+    previous_image_button.disable()
+    set_model_type_button.disable()
+    update_images_preview_button.disable()
+    update_predictions_preview_button.disable()
+    output_project_thmb.hide()
     global IS_LOCAL_INFERENCE, IS_IMAGE_PROMPT, MODEL_DATA
     confidence_threshhold = confidence_threshhold_input.get_value()
     nms_threshhold = nms_threshhold_input.get_value()
@@ -597,6 +707,7 @@ def run_model():
 
     # apply models to project
     with apply_progress_bar(message="Applying model to project...", total=g.project_info.images_count) as pbar:
+        datasets_list = [g.api.dataset.get_info_by_id(ds_id) for ds_id in g.DATASET_IDS]
         for dataset in datasets_list:
             # annotate image in its dataset
             if is_new_project is True:
@@ -623,6 +734,7 @@ def run_model():
                     target_sizes = torch.Tensor([[image_info.height, image_info.width]]).to(g.DEVICE)
 
                     if IS_IMAGE_PROMPT:
+                        ref_image_info = IMAGES_INFO_LIST[CURRENT_REF_IMAGE_INDEX]
                         query_image = sly.image.read(get_image_path(ref_image_info.name))
                         query_image = query_image[y0:y1, x0:x1]
                         results = apply_model(
@@ -703,6 +815,11 @@ def run_model():
     output_project_thmb.show()
     sly.logger.info("Project was successfully labeled")
 
+    toggle_cards(['run_model_card'], enabled=True)
+    output_project_thmb.show()
+    button_download_data.enable()
+    run_model_button.enable()
+
 output_project_thmb = ProjectThumbnail()
 output_project_thmb.hide()
 run_model_card = Card(
@@ -711,11 +828,14 @@ run_model_card = Card(
 )
 
 def toggle_cards(cards: List[str], enabled: bool = False):
+    global CURRENT_REF_IMAGE_INDEX, REF_IMAGE_HISTORY
     if 'data_card' in cards:
         if enabled:
             data_card.enable()
+            dataset_selector.enable()
         else:
             data_card.disable()
+            dataset_selector.disable()
     if 'inference_type_selection_card' in cards:
         if enabled:
             inference_type_selection_card.enable()
@@ -733,8 +853,12 @@ def toggle_cards(cards: List[str], enabled: bool = False):
             text_prompt_textarea.enable()
             class_input.enable()
             image_region_selector.enable()
-            # previous_image_button.enable()
-            next_image_button.enable()
+            if CURRENT_REF_IMAGE_INDEX != REF_IMAGE_HISTORY[0]:
+                previous_image_button.enable()
+            if CURRENT_REF_IMAGE_INDEX < len(IMAGES_INFO_LIST) - 1:
+                next_image_button.enable()
+            confidence_threshhold_input.enable()
+            nms_threshhold_input.enable()
             random_image_button.enable()
             model_input_tabs.enable()
         else:
@@ -742,8 +866,10 @@ def toggle_cards(cards: List[str], enabled: bool = False):
             text_prompt_textarea.disable()
             class_input.disable()
             image_region_selector.disable()
-            # previous_image_button.disable()
+            previous_image_button.disable()
             next_image_button.disable()
+            confidence_threshhold_input.disable()
+            nms_threshhold_input.disable()
             random_image_button.disable()
             model_input_tabs.disable()
     if 'preview_card' in cards:
