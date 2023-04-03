@@ -1,0 +1,9 @@
+version: "2.2"
+services:
+  owl-vit-app:
+    shm_size: '8gb'
+    runtime: nvidia
+    build:
+      context: .
+      args:
+        IMAGE: supervisely/owl-vit:1.0.0-ruslan
