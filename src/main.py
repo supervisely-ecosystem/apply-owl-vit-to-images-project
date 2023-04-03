@@ -26,11 +26,11 @@ from supervisely.app.widgets import (
     RadioGroup,
     RadioTable,
     SelectDataset,
+    NotificationBox
 )
-from transformers import OwlViTProcessor, OwlViTForObjectDetection
 
 import src.sly_globals as g
-from src.model import apply_model, predictions_to_anno, inference_json_anno_preprocessing
+from src.model import apply_model, get_model, inference_json_anno_preprocessing
 
 IS_LOCAL_INFERENCE = True
 IS_IMAGE_PROMPT = True
@@ -222,9 +222,11 @@ def select_model_session_change(val):
     else:
         set_model_type_button.enable()
 
-connect_model_done = DoneLabel("Model successfully connected.")
-connect_model_done.hide()
+model_set_done = DoneLabel("Model successfully loaded.")
+model_set_done.hide()
 model_info = ModelInfo()
+model_warmup_notif_box = NotificationBox('Please, wait, model is warming up, it can take 5-7 minutes', box_type='info')
+model_warmup_notif_box.hide()
 set_model_type_button = Button(text="Select model")
 model_config_table = RadioTable(
     columns=["Model", "Backbone", "Pretraining", "Size", "LVIS AP", "LVIS APr", ], 
@@ -237,10 +239,8 @@ model_config_table = RadioTable(
 inference_type_selection_tabs = RadioTabs(
     titles=["Local inference", "Served model"],
     contents=[
-        model_config_table,
-        Container(
-            [select_model_session, connect_model_done, model_info]
-        ),
+        Container([model_config_table, model_warmup_notif_box]), 
+        Container([select_model_session, model_info]),
     ],
     descriptions=[
         "Run model locally on the available accelerator",
@@ -263,7 +263,7 @@ def inference_type_changed(val):
 inference_type_selection_card = Card(
     title="Model settings",
     description="Select served Owl-ViT model or run it as-is on the available accelerator",
-    content=Container([inference_type_selection_tabs, set_model_type_button]),
+    content=Container([inference_type_selection_tabs, model_set_done, set_model_type_button]),
 )
 
 @set_model_type_button.click
@@ -282,20 +282,30 @@ def set_model_type():
             update_images_preview_button.disable()
             update_predictions_preview_button.disable()
             run_model_button.disable()
+            model_warmup_notif_box.hide()
+            model_set_done.hide()
             stepper.set_active_step(2)
         else:
             inference_type_selection_tabs.disable()
-            MODEL_DATA = dict(zip(map(str.lower, model_config_table.columns), model_config_table.get_selected_row()))
+            new_model_data = dict(zip(map(str.lower, model_config_table.columns), model_config_table.get_selected_row()))
+            is_loaded = True if MODEL_DATA.get('model') == new_model_data['model'] else False
+            MODEL_DATA.update(new_model_data)
+            if is_loaded is False: 
+                model_warmup_notif_box.show()
+                MODEL_DATA['model_instance'] = get_model(MODEL_DATA['model'])
             model_config_table.disable()
             set_model_type_button.text = 'Change model'
             toggle_cards(['model_settings_card'], enabled=True)
             set_input_button.enable()
+            model_set_done.text = 'Model successfully loaded.'
+            model_set_done.show()
+            model_warmup_notif_box.hide()
             stepper.set_active_step(3)
     else:
         if set_model_type_button.text == 'Disconnect model':
             MODEL_DATA["session_id"] = None
             MODEL_DATA["model_meta"] = None
-            connect_model_done.hide()
+            model_set_done.hide()
             model_info.hide()
             select_model_session.enable()
             inference_type_selection_tabs.enable()
@@ -324,7 +334,8 @@ def set_model_type():
                     sly.logger.info(f"Model meta: {str(model_meta_json)}")
                     MODEL_DATA["model_meta"] = sly.ProjectMeta.from_json(model_meta_json)
                     MODEL_DATA["session_id"] = model_session_id
-                    connect_model_done.show()
+                    model_set_done.text = 'Model successfully connected.'
+                    model_set_done.show()
                     model_info.set_session_id(session_id=model_session_id)
                     model_info.show()
                     set_model_type_button.text = 'Disconnect model'
@@ -338,7 +349,7 @@ def set_model_type():
                     set_model_type_button.enable()
                     set_model_type_button.text = 'Connect to model'
                     inference_type_selection_tabs.enable()
-                    connect_model_done.hide()
+                    model_set_done.hide()
                     select_model_session.enable()
                     model_info.hide()
                     toggle_cards(['model_settings_card', 'preview_card', 'run_model_card'], enabled=False)
@@ -519,69 +530,46 @@ update_predictions_preview_button = Button(
 )
 @update_predictions_preview_button.click
 def update_predictions_preview():
-    update_images_preview_button.disable()
     global IS_LOCAL_INFERENCE, IS_IMAGE_PROMPT
-    confidence_threshhold = confidence_threshhold_input.get_value()
-    nms_threshhold = nms_threshhold_input.get_value()
+    update_images_preview_button.disable()
+    confidence_threshold = confidence_threshhold_input.get_value()
+    nms_threshold = nms_threshhold_input.get_value()
 
     # for TEXT PROMPT
     text_queries = text_prompt_textarea.get_value().split(";")
     # for IMAGE REFERENCE
     selected_bbox = image_region_selector.scaled_bbox
     x0, y0, x1, y1 = *selected_bbox[0], *selected_bbox[1]
+    print(f"Selected bbox: {selected_bbox}\n x0,y0 ={selected_bbox[0]} | x1,y1 = {selected_bbox[1]}")
 
     if IS_LOCAL_INFERENCE:
-        selected_model = MODEL_DATA['model']
-        if selected_model == "OWL-ViT base patch 32":
-            processor = OwlViTProcessor.from_pretrained("google/owlvit-base-patch32")
-            model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch32")
-        elif selected_model == "OWL-ViT base patch 16":
-            processor = OwlViTProcessor.from_pretrained("google/owlvit-base-patch16")
-            model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch16")
-        elif selected_model == "OWL-ViT large patch 14":
-            processor = OwlViTProcessor.from_pretrained("google/owlvit-large-patch14")
-            model = OwlViTForObjectDetection.from_pretrained("google/owlvit-large-patch14")
-        model = model.to(g.DEVICE)
-        model.eval()
+        model = MODEL_DATA['model_instance']
 
     annotations_list = []
     for i, image_info in enumerate(PREVIEW_IMAGES_INFOS):
         image = sly.image.read(get_image_path(image_info.name))
-        target_sizes = torch.Tensor([[image_info.height, image_info.width]]).to(g.DEVICE)
 
         if IS_LOCAL_INFERENCE:
             if IS_IMAGE_PROMPT:
                 ref_image_info = IMAGES_INFO_LIST[CURRENT_REF_IMAGE_INDEX]
                 query_image = sly.image.read(get_image_path(ref_image_info.name))
-                query_image = query_image[y0:y1, x0:x1]
-                results = apply_model(
+                new_annotation = apply_model(
                     image, 
-                    target_sizes, 
                     model, 
-                    processor, 
-                    query_image, 
-                    confidence_threshhold=confidence_threshhold, 
-                    nms_threshhold=nms_threshhold
+                    query_image=query_image, 
+                    reference_bbox = [y0, x0, y1, x1], 
+                    class_name=f"{class_input.get_value()}_pred", 
+                    confidence_threshold=confidence_threshold, 
+                    nms_threshold=nms_threshold
                 )
             else:
-                results = apply_model(
+                new_annotation = apply_model(
                     image, 
-                    target_sizes, 
                     model, 
-                    processor, 
                     text_queries=text_queries, 
-                    confidence_threshhold=confidence_threshhold, 
-                    nms_threshhold=nms_threshhold
+                    confidence_threshold=confidence_threshold, 
+                    nms_threshold=nms_threshold
                 )
-            
-            scores = results[0]["scores"].cpu().detach().numpy()
-            boxes = results[0]["boxes"].cpu().detach().numpy()
-            labels = results[0]["labels"]
-            if labels is None:
-                labels = [f"{class_input.get_value()}_pred"] * len(boxes)
-            else:
-                labels = [f"{text_queries[label]}_pred" for label in labels]
-            new_annotation = predictions_to_anno(scores, boxes, labels, image_info, confidence_threshhold, nms_threshhold)
         else:
             if IS_IMAGE_PROMPT:
                 inference_settings = dict(
@@ -589,8 +577,8 @@ def update_predictions_preview():
                     reference_bbox = [y0, x0, y1, x1],
                     reference_image_id = image_region_selector.image_id,
                     reference_class_name = class_input.get_value(),
-                    confidence_threshold = confidence_threshhold,
-                    # nms_threshhold=nms_threshhold,
+                    confidence_threshold = confidence_threshold,
+                    # nms_threshold=nms_threshold,
                 )
                 ann = g.api.task.send_request(
                     MODEL_DATA["session_id"],
@@ -603,8 +591,8 @@ def update_predictions_preview():
                 inference_settings = dict(
                     mode = "text_prompt",
                     text_queries = text_queries,
-                    confidence_threshold = confidence_threshhold,
-                    nms_threshhold=nms_threshhold,
+                    confidence_threshold = confidence_threshold,
+                    nms_threshold=nms_threshold,
                 )
                 ann = g.api.task.send_request(
                     MODEL_DATA["session_id"],
@@ -680,8 +668,8 @@ def run_model():
         update_predictions_preview_button.disable()
         output_project_thmb.hide()
         global IS_LOCAL_INFERENCE, IS_IMAGE_PROMPT, MODEL_DATA
-        confidence_threshhold = confidence_threshhold_input.get_value()
-        nms_threshhold = nms_threshhold_input.get_value()
+        confidence_threshold = confidence_threshhold_input.get_value()
+        nms_threshold = nms_threshhold_input.get_value()
 
         output_destination = select_output_destination.get_value() 
         if output_destination == "Save annotations to new project":
@@ -758,8 +746,8 @@ def run_model():
                                 model, 
                                 processor, 
                                 query_image, 
-                                confidence_threshhold=confidence_threshhold, 
-                                nms_threshhold=nms_threshhold
+                                confidence_threshold=confidence_threshold, 
+                                nms_threshold=nms_threshold
                             )
                         else:
                             results = apply_model(
@@ -768,8 +756,8 @@ def run_model():
                                 model, 
                                 processor, 
                                 text_queries=text_queries, 
-                                confidence_threshhold=confidence_threshhold, 
-                                nms_threshhold=nms_threshhold
+                                confidence_threshold=confidence_threshold, 
+                                nms_threshold=nms_threshold
                             )
                         scores = results[0]["scores"].cpu().detach().numpy()
                         boxes = results[0]["boxes"].cpu().detach().numpy()
@@ -778,7 +766,7 @@ def run_model():
                             labels = [f"{class_input.get_value()}_pred"] * len(boxes)
                         else:
                             labels = [f"{text_queries[label]}_pred" for label in labels]
-                        ann = predictions_to_anno(scores, boxes, labels, image_info, confidence_threshhold, nms_threshhold)
+                        ann = predictions_to_anno(scores, boxes, labels, image_info, confidence_threshold, nms_threshold)
                     else:
                         if IS_IMAGE_PROMPT:
                             inference_settings = dict(
@@ -786,8 +774,8 @@ def run_model():
                                 reference_bbox = [y0, x0, y1, x1],
                                 reference_image_id = image_region_selector.image_id,
                                 reference_class_name = class_input.get_value(),
-                                confidence_threshold = confidence_threshhold,
-                                # nms_threshhold=nms_threshhold,
+                                confidence_threshold = confidence_threshold,
+                                # nms_threshold=nms_threshold,
                             )
                             ann = g.api.task.send_request(
                                 MODEL_DATA["session_id"],
@@ -799,8 +787,8 @@ def run_model():
                             inference_settings = dict(
                                 mode = "text_prompt",
                                 text_queries = text_queries,
-                                confidence_threshold = confidence_threshhold,
-                                nms_threshhold=nms_threshhold,
+                                confidence_threshold = confidence_threshold,
+                                nms_threshold=nms_threshold,
                             )
                             ann = g.api.task.send_request(
                                 MODEL_DATA["session_id"],
