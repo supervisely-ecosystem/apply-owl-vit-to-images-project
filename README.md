@@ -1,8 +1,8 @@
 <div align="center" markdown>
 
-<img src="docs/images/poster.png">
+<img src="https://user-images.githubusercontent.com/115161827/230065782-f033aa7d-6acc-405b-89e3-81330bb66bbb.png" />
 
-# Owl-ViT-app
+# Apply Owl-ViT to Images Project
 Integration of the Owl-ViT model for class-agnostic object detection
 
 <p align="center">
