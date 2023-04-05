@@ -6,8 +6,7 @@
   "categories": [
     "neural network",
     "object detection",
-    "salient object segmentation",
-    "inference interfaces",
+    "interactive detection",
     "images"
   ],
   "entrypoint": "python -m uvicorn src.main:app --host 0.0.0.0 --port 8000",
