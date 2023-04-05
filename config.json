@@ -19,6 +19,9 @@
   "task_location": "workspace_tasks",
   "need_gpu": true,
   "community_agent": false,
+  "icon": "https://user-images.githubusercontent.com/115161827/230065661-6ad4a9e0-20bf-452a-b3bd-10646436e335.png",
+  "icon_cover": true,
+  "poster": "https://user-images.githubusercontent.com/115161827/230065782-f033aa7d-6acc-405b-89e3-81330bb66bbb.png",
   "release": { "version":"v1.0.0", "name":"init" },
   "slug": "supervisely-ecosystem/owl-vit-app"
 }
