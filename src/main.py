@@ -292,7 +292,7 @@ class_input_field = Field(
     title="Class name",
     description="All detected objects will be added to project/dataset with this class name",
 )
-image_region_selector = ImageRegionSelector(widget_width="500px", widget_height="500px")
+image_region_selector = ImageRegionSelector(widget_width="500px", widget_height="500px", points_disabled=True)
 @image_region_selector.bbox_changed
 def bbox_updated(new_scaled_bbox):
     sly.logger.info(f"new_scaled_bbox: {new_scaled_bbox}")
