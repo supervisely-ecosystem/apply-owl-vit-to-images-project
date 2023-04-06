@@ -1,4 +1,0 @@
-[submodule "scenic"]
-	path = scenic
-	url = https://github.com/google-research/scenic.git
-	branch = 01b082706e7304e699baaa1bf4d15dcbf4d52de2
