@@ -22,7 +22,10 @@ from supervisely.app.widgets import (
     DoneLabel,
     ModelInfo,
     SelectDataset,
-    DestinationProject
+    DestinationProject,
+    Flexbox,
+    Grid, 
+    Empty
 )
 
 import src.sly_globals as g
@@ -173,7 +176,8 @@ def download_data():
             button_download_data.text = 'Change data' 
             text_download_data.show()
             toggle_cards(['inference_type_selection_card'], enabled=True)
-            set_model_type_button.enable()
+            if select_model_session.get_selected_id() is not None:
+                set_model_type_button.enable()
             stepper.set_active_step(2)
         except Exception as e:
             sly.logger.info("Something went wrong.")
@@ -285,7 +289,12 @@ inference_type_selection_card = Card(
 #############################
 ### Model input configuration
 #############################
-text_prompt_textarea = Input(placeholder="Description of object, that you want to detect via NN model")
+text_prompt_textarea = Input(placeholder="blue car;dog;white rabbit;seagull")
+text_prompt_textarea_field = Field(
+    content=text_prompt_textarea,
+    title="Describe what do you want to detect via NN",
+    description="Names and descriptions of objects. For many objects use ; as separator.",
+)
 class_input = Input(placeholder="The class name for selected object")
 class_input_field = Field(
     content=class_input,
@@ -366,17 +375,16 @@ def set_model_input():
 model_input_tabs = RadioTabs(
     titles=["Reference image", "Text prompt"],
     contents=[
-        Container(
-            [
-                Container(
-                    [previous_image_button, next_image_button, random_image_button],
-                    direction="horizontal",
-                ),
-                image_region_selector,
-                class_input_field,
-            ]
-        ),
-        Container([text_prompt_textarea]),
+        Container([
+            Flexbox(
+                [previous_image_button, next_image_button, random_image_button],
+                gap=10,
+                center_content=False,
+            ),
+            image_region_selector,
+            Grid([class_input_field, Empty()], columns=2, gap=5)
+        ]),
+        Container([text_prompt_textarea_field]),
     ],
     descriptions=[
         "Pick object by bounding box editing",
