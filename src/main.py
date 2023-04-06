@@ -567,8 +567,9 @@ def run_model():
                 output_dataset = g.api.dataset.get_info_by_id(output_dataset_id)
 
         # apply models to project
-        with apply_progress_bar(message="Applying model to project...", total=g.project_info.images_count) as pbar:
-            datasets_list = [g.api.dataset.get_info_by_id(ds_id) for ds_id in g.DATASET_IDS]
+        datasets_list = [g.api.dataset.get_info_by_id(ds_id) for ds_id in g.DATASET_IDS]
+        total_items_cnt = sum([ds.items_count for ds in datasets_list])
+        with apply_progress_bar(message="Applying model to project...", total=total_items_cnt) as pbar:
             for dataset in datasets_list:
                 # annotate image in its dataset
                 images_info = g.api.image.get_list(dataset.id)
