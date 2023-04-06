@@ -356,6 +356,7 @@ def random_image():
         next_image_button.enable()
 @set_input_button.click
 def set_model_input():
+    global IS_IMAGE_PROMPT
     if model_settings_card.is_disabled() is True:
         set_input_button.text = "Set model input"
         toggle_cards(['model_settings_card'], enabled=True)
@@ -365,13 +366,18 @@ def set_model_input():
         run_model_button.disable()
         stepper.set_active_step(3)
     else:
-        set_input_button.text = "Change model input"
-        toggle_cards(['model_settings_card'], enabled=False)
-        toggle_cards(['preview_card', 'run_model_card'], enabled=True)
-        update_images_preview_button.enable()
-        update_predictions_preview_button.enable()
-        run_model_button.enable()
-        stepper.set_active_step(5)
+        if IS_IMAGE_PROMPT and class_input.get_value().strip() == '':
+            raise sly.app.DialogWindowWarning(title="Wrong value", description="Class name can not be empty.")
+        elif not IS_IMAGE_PROMPT and text_prompt_textarea.get_value().strip() == '':
+            raise sly.app.DialogWindowWarning(title="Wrong value", description="Text prompt can not be empty.")
+        else:
+            set_input_button.text = "Change model input"
+            toggle_cards(['model_settings_card'], enabled=False)
+            toggle_cards(['preview_card', 'run_model_card'], enabled=True)
+            update_images_preview_button.enable()
+            update_predictions_preview_button.enable()
+            run_model_button.enable()
+            stepper.set_active_step(5)
 model_input_tabs = RadioTabs(
     titles=["Reference image", "Text prompt"],
     contents=[

@@ -23,8 +23,8 @@ Application allows you to label projects images using Owl-ViT detection model.
 
 Application key points:
 
-- Select project to label
-- Choose the model configuration for local run or run via [serve owl-vit app](https://github.com/supervisely-ecosystem/serve-owl-vit) 
+- Select project or dataset to label
+- Serve Owl-Vit model by [this app](https://github.com/supervisely-ecosystem/serve-owl-vit) and choose model session in selector 
 - Set up model input data as text-prompt or reference-image
 - Preview detection results
 - Apply model to project images and save new annotations to new project or add to existed  
