@@ -450,7 +450,7 @@ def update_predictions_preview():
     # for TEXT PROMPT
     text_queries = text_prompt_textarea.get_value().split(";")
     # for IMAGE REFERENCE
-    selected_bbox = image_region_selector.scaled_bbox
+    selected_bbox = image_region_selector.get_bbox()
     x0, y0, x1, y1 = *selected_bbox[0], *selected_bbox[1]
 
     annotations_list = []
@@ -459,7 +459,7 @@ def update_predictions_preview():
             inference_settings = dict(
                 mode = "reference_image",
                 reference_bbox = [y0, x0, y1, x1],
-                reference_image_id = image_region_selector.image_id,
+                reference_image_id = image_region_selector._image_id,
                 reference_class_name = class_input.get_value(),
                 confidence_threshold = confidence_threshold,
                 nms_threshold=nms_threshold
@@ -535,6 +535,7 @@ def run_model():
         nms_threshold = nms_threshhold_input.get_value()
 
         output_project_id = destination_project.get_selected_project_id()
+        use_project_datasets_structure = destination_project.use_project_datasets_structure()
         output_dataset_id = destination_project.get_selected_dataset_id()
         if output_project_id is None:
             output_project_name = destination_project.get_project_name()
@@ -547,18 +548,23 @@ def run_model():
                 change_name_if_conflict=True,
             )
             output_project_id = output_project.id
+            is_new_project = True
+        else:
+            is_new_project = False
+
         output_project_meta = sly.ProjectMeta.from_json(g.api.project.get_meta(output_project_id))
         output_project_meta = output_project_meta.merge(g.project_meta)
-
-        if output_dataset_id is None:
-            output_dataset_name = destination_project.get_dataset_name()
-            if output_dataset_name.strip() == '':
-                output_dataset_name = 'ds'
-            output_dataset = g.api.dataset.create(
-                project_id=output_project_id, name=output_dataset_name, change_name_if_conflict=True
-            )
-        else:
-            output_dataset = g.api.dataset.get_info_by_id(output_dataset_id)
+        
+        if use_project_datasets_structure is False:
+            if output_dataset_id is None:
+                output_dataset_name = destination_project.get_dataset_name()
+                if output_dataset_name.strip() == '':
+                    output_dataset_name = 'ds'
+                output_dataset = g.api.dataset.create(
+                    project_id=output_project_id, name=output_dataset_name, change_name_if_conflict=True
+                )
+            else:
+                output_dataset = g.api.dataset.get_info_by_id(output_dataset_id)
 
         # apply models to project
         with apply_progress_bar(message="Applying model to project...", total=g.project_info.images_count) as pbar:
@@ -568,14 +574,14 @@ def run_model():
                 images_info = g.api.image.get_list(dataset.id)
                 for image_info in images_info:
                     text_queries = text_prompt_textarea.get_value().split(";")
-                    selected_bbox = image_region_selector.scaled_bbox
+                    selected_bbox = image_region_selector.get_bbox()
                     x0, y0, x1, y1 = *selected_bbox[0], *selected_bbox[1]
                     
                     if IS_IMAGE_PROMPT:
                         inference_settings = dict(
                             mode = "reference_image",
                             reference_bbox = [y0, x0, y1, x1],
-                            reference_image_id = image_region_selector.image_id,
+                            reference_image_id = image_region_selector._image_id,
                             reference_class_name = class_input.get_value(),
                             confidence_threshold = confidence_threshold,
                             nms_threshold=nms_threshold,
@@ -615,6 +621,17 @@ def run_model():
                     image_ann_json = g.api.annotation.download(image_info.id).annotation
                     image_ann = sly.Annotation.from_json(image_ann_json, output_project_meta)
                     image_ann = image_ann.add_labels(ann.labels)
+
+                    if use_project_datasets_structure:
+                        output_dataset_name = dataset.name
+                        if not g.api.dataset.exists(output_project_id, output_dataset_name):
+                            output_dataset = g.api.dataset.create(
+                                project_id=output_project_id, name=output_dataset_name, change_name_if_conflict=False
+                            )
+                        else:
+                            output_dataset = g.api.dataset.get_info_by_name(output_project_id, output_dataset_name)
+                        output_dataset_id = output_dataset.id
+
                     if g.project_id != output_project_id or dataset.id != output_dataset_id:
                         image_info = g.api.image.copy(dst_dataset_id=output_dataset.id, id=image_info.id, change_name_if_conflict=True, with_annotations=False)
                     g.api.annotation.upload_ann(image_info.id, image_ann)

@@ -1,7 +1,6 @@
 import os
 from pathlib import Path
 
-import torch
 import supervisely as sly
 from dotenv import load_dotenv
 
@@ -25,6 +24,5 @@ team = api.team.get_info_by_id(workspace.team_id)
 os.environ["TEAM_ID"] = str(team.id)
 
 DATASET_IDS = [dataset_id] if dataset_id else []
-DEVICE = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 COLUMNS_COUNT = 6
 PREVIEW_IMAGES_COUNT = 18
