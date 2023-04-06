@@ -6,14 +6,13 @@
   "categories": [
     "neural network",
     "object detection",
-    "salient object segmentation",
-    "inference interfaces",
+    "interactive detection",
     "images"
   ],
   "entrypoint": "python -m uvicorn src.main:app --host 0.0.0.0 --port 8000",
   "port": 8000,
   "context_menu": {
-    "target": ["images_project"],
+    "target": ["images_project", "images_dataset"],
     "context_root": "Neural Networks"
   },
   "task_location": "workspace_tasks",
@@ -23,5 +22,6 @@
   "icon_cover": true,
   "poster": "https://user-images.githubusercontent.com/115161827/230065782-f033aa7d-6acc-405b-89e3-81330bb66bbb.png",
   "release": { "version":"v1.0.0", "name":"init" },
-  "slug": "supervisely-ecosystem/owl-vit-app"
+  "slug": "supervisely-ecosystem/owl-vit-app",
+  "docker_image": "supervisely/owl-vit:1.0.0-ruslan"
 }

@@ -1,0 +1,11 @@
+version: "2.2"
+services:
+  owl-vit-app:
+    shm_size: '8gb'
+    runtime: nvidia
+    image: supervisely/owl-vit:1.0.1-ruslan
+    build:
+      context: ..
+      dockerfile: ./docker/Dockerfile
+      args:
+        IMAGE: supervisely/owl-vit:1.0.0-ruslan

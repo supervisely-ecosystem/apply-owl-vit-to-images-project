@@ -1,9 +1,19 @@
-supervisely==6.70.17
+supervisely==6.71.3
 
 # For CLIP:
 torch>=1.10.2
-torchvision
-transformers[torch]
+git+https://github.com/openai/CLIP.git
+ml_collections
+clu
+tensorflow
+tensorflow-datasets
+scikit-image
+bokeh
+matplotlib
+
+# To import Sinkhorn matcher:
+jax
+ott-jax==0.2.0
 
 # # code formatter
 black
