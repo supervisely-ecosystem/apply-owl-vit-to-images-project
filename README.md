@@ -24,7 +24,7 @@ Application key points:
 
 - Select project or dataset to label
 - Serve this model by [Serve OWL-ViT](https://ecosystem.supervise.ly/apps/apply-object-segmentor-to-images-project) and choose model session in selector
-<img data-key="sly-module-link" data-module-slug="supervisely-ecosystem/serve-owl-vit" src="xxx" height="70px" margin-bottom="20px"/>
+<img data-key="sly-module-link" data-module-slug="supervisely-ecosystem/serve-owl-vit" src="https://user-images.githubusercontent.com/115161827/230909082-8d0cb4f1-ce7c-490a-9187-f87d061c1f7b.png" height="70px" margin-bottom="20px"/>
 
 - Set up model input data as text-prompt or reference-image
 - Preview detection results
