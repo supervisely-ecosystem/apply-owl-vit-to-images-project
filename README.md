@@ -51,7 +51,7 @@ Adjust the confidence and NMS thresholds and click `Set model input` button
 
 5. View predictions preview by clicking according button
 
-<img src="https://user-images.githubusercontent.com/115161827/230068878-18d2ef04-f7fa-47b8-8c58-b42c2298c687.png" />
+<img src="https://user-images.githubusercontent.com/115161827/230946583-df804396-4e03-4fc1-8d33-13494d097dab.png" />
 
 6. Select the way you want to save the project and click `Run model`
 
