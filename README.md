@@ -6,8 +6,7 @@ Integration of the Owl-ViT model for class-agnostic object detection
 
 <p align="center">
   <a href="#Overview">Overview</a> •
-  <a href="#How-to-Run">How to Run</a> •
-  <a href="#Demo">Demo</a>
+  <a href="#How-to-Run">How to Run</a>
 </p>
 
 [![](https://img.shields.io/badge/supervisely-ecosystem-brightgreen)](https://ecosystem.supervise.ly/apps/supervisely-ecosystem/apply-owl-vit-to-images-project)
@@ -55,14 +54,3 @@ Adjust the confidence and NMS thresholds and click `Set model input` button
 6. Select the way you want to save the project and click `Run model`
 
 <img src="https://user-images.githubusercontent.com/115161827/230893629-f4ce9a55-8df9-47a5-a698-5c0c2055ea26.png" />
-
-## Results screenshoot
-<details>
-<summary>Reference-image</summary>
-<img src="docs/images/screenshoot.png" />
-</details>
-
-<details>
-<summary>Text-prompt</summary>
-<img src="docs/images/screenshoot.png" />
-</details>
