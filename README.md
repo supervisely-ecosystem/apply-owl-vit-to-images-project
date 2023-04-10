@@ -37,12 +37,12 @@ Application key points:
 
 <img src="https://user-images.githubusercontent.com/115161827/230068919-1c67170a-855f-4372-b78c-823c0a4da0fd.png" />
 
-3. Select local inference / served model and click `Select model` button
+3. Select your served model and click `Select model` button
 
-<img src="https://user-images.githubusercontent.com/115161827/230068913-f42c2242-3a8d-4aef-86f2-53eeb61fedb8.png" />
+<img src="https://user-images.githubusercontent.com/115161827/230893590-cb0077e0-7a4f-4ce4-9bc1-a70278e07b49.png" />
 
-4. **Reference Image**: <br> pick reference image from your project by clicking navigating buttons and place the reference object in the bounding box <br>
-   **Text Prompt**: <br> type the description of the object you want to detect in the corresponding field
+4. **Reference Image**: <br> &emsp; Pick reference image from your project by clicking navigating buttons and place the reference object in the bounding box </br> <br>
+   **Text Prompt**: <br> &emsp; Type the description of the object you want to detect in the corresponding field
   
 Adjust the confidence and NMS thresholds and click `Set model input` button
 
@@ -54,7 +54,7 @@ Adjust the confidence and NMS thresholds and click `Set model input` button
 
 6. Select the way you want to save the project and click `Run model`
 
-<img src="https://user-images.githubusercontent.com/115161827/230068872-07e9bdff-63f6-4f6c-8095-d00119148831.png" />
+<img src="https://user-images.githubusercontent.com/115161827/230893629-f4ce9a55-8df9-47a5-a698-5c0c2055ea26.png" />
 
 ## Results screenshoot
 <details>
