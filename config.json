@@ -3,6 +3,7 @@
   "type": "app",
   "version": "2.0.0",
   "description": "Class-angnostic object detection model",
+  "docker_image": "supervisely/base-py-sdk:6.72.56",
   "categories": [
     "neural network",
     "object detection",
