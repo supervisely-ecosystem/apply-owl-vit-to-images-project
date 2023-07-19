@@ -579,7 +579,7 @@ def model_input_changed(val):
         confidence_threshhold_input.value = 0.1
 
 
-confidence_threshhold_input = InputNumber(value=0.5, min=00.1, max=1, step=0.01)
+confidence_threshhold_input = InputNumber(value=0.8, min=00.1, max=1, step=0.01)
 nms_threshhold_input = InputNumber(value=0.5, min=0.01, max=1, step=0.01)
 field_confidence_threshhold = Field(
     title="Confidence threshold",
