@@ -573,9 +573,13 @@ model_input_tabs = RadioTabs(
 def model_input_changed(val):
     global IS_IMAGE_PROMPT
     IS_IMAGE_PROMPT = True if val == "Reference image" else False
+    if val == "Reference image":
+        confidence_threshhold_input.value = 0.8
+    else:
+        confidence_threshhold_input.value = 0.1
 
 
-confidence_threshhold_input = InputNumber(value=0.5, min=00.1, max=1, step=0.01)
+confidence_threshhold_input = InputNumber(value=0.8, min=00.1, max=1, step=0.01)
 nms_threshhold_input = InputNumber(value=0.5, min=0.01, max=1, step=0.01)
 field_confidence_threshhold = Field(
     title="Confidence threshold",
@@ -664,7 +668,7 @@ def update_predictions_preview():
                 reference_bbox=[y0, x0, y1, x1],
                 reference_image_id=image_region_selector._image_id,
                 reference_class_name=class_input.get_value(),
-                confidence_threshold=confidence_threshold,
+                confidence_threshold=[{"text_prompt": confidence_threshold}, {"reference_image": confidence_threshold}],
                 nms_threshold=nms_threshold,
             )
             ann = g.api.task.send_request(
@@ -678,7 +682,7 @@ def update_predictions_preview():
             inference_settings = dict(
                 mode="text_prompt",
                 text_queries=text_queries,
-                confidence_threshold=confidence_threshold,
+                confidence_threshold=[{"text_prompt": confidence_threshold}, {"reference_image": confidence_threshold}],
                 nms_threshold=nms_threshold,
             )
             ann = g.api.task.send_request(
@@ -810,7 +814,7 @@ def run_model():
                             reference_bbox=[y0, x0, y1, x1],
                             reference_image_id=image_region_selector._image_id,
                             reference_class_name=class_input.get_value(),
-                            confidence_threshold=confidence_threshold,
+                            confidence_threshold=[{"text_prompt": confidence_threshold}, {"reference_image": confidence_threshold}],
                             nms_threshold=nms_threshold,
                         )
                         ann = g.api.task.send_request(
@@ -826,7 +830,7 @@ def run_model():
                         inference_settings = dict(
                             mode="text_prompt",
                             text_queries=text_queries,
-                            confidence_threshold=confidence_threshold,
+                            confidence_threshold=[{"text_prompt": confidence_threshold}, {"reference_image": confidence_threshold}],
                             nms_threshold=nms_threshold,
                         )
                         ann = g.api.task.send_request(
