@@ -600,6 +600,7 @@ model_settings_card = Card(
             Container(
                 [field_confidence_threshhold, field_nms_threshhold],
                 direction="horizontal",
+                overflow=None
             ),
             set_input_button,
         ]
@@ -717,6 +718,7 @@ preview_card = Card(
     content_top_right=Container(
         [update_images_preview_button, update_predictions_preview_button],
         direction="horizontal",
+        overflow=None
     ),
 )
 
