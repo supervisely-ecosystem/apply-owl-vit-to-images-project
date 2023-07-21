@@ -86,7 +86,7 @@ def on_dataset_selected(new_dataset_ids):
         dataset_selector.enable()
         g.DATASET_IDS = new_dataset_ids
         IMAGES_INFO_LIST = get_images_infos_for_preview()
-        update_images_preview()
+        # update_images_preview()
         CURRENT_REF_IMAGE_INDEX = 0
         REF_IMAGE_HISTORY = [CURRENT_REF_IMAGE_INDEX]
         image_region_selector.image_update(IMAGES_INFO_LIST[CURRENT_REF_IMAGE_INDEX])
@@ -95,7 +95,7 @@ def on_dataset_selected(new_dataset_ids):
             g.DATASET_IDS = new_dataset_ids
             text_download_data.hide()
             IMAGES_INFO_LIST = get_images_infos_for_preview()
-            update_images_preview()
+            # update_images_preview()
             CURRENT_REF_IMAGE_INDEX = 0
             REF_IMAGE_HISTORY = [CURRENT_REF_IMAGE_INDEX]
             image_region_selector.image_update(
@@ -466,6 +466,7 @@ def set_model_input():
             )
         else:
             set_input_button.text = "Change model input"
+            update_images_preview()
             toggle_cards(["model_settings_card"], enabled=False)
             toggle_cards(["preview_card", "run_model_card"], enabled=True)
             update_images_preview_button.enable()
@@ -475,7 +476,6 @@ def set_model_input():
 
 
 images_table = Table(fixed_cols=2, sort_column_id=1, per_page=15)
-rows = []
 columns = [
     "DATASET NAME",
     "IMAGE ID",
@@ -487,17 +487,31 @@ columns = [
 
 
 def build_table():
-    global images_table, rows, columns
+    global images_table, columns
+
+    sly.logger.debug("Trying to build images table...")
 
     images_table.loading = True
     images_table.read_json(None)
 
     project = g.project_fs
 
-    for dataset in project.datasets:
-        image_names = dataset.get_items_names()
+    dataset_ids = g.DATASET_IDS
+    sly.logger.debug(f"Read dataset ids from g.DATASET_IDS: {dataset_ids}")
 
-        print(dir(dataset))
+    dataset_names = [g.api.dataset.get_info_by_id(ds_id).name for ds_id in dataset_ids]
+
+    sly.logger.debug(f"Retrieved dataset names from API: {dataset_names}")
+
+    rows = []
+    for dataset in project.datasets:
+        if dataset.name not in dataset_names:
+            sly.logger.debug(
+                f"Dataset {dataset.name} not in selected datasets: {dataset_names}. Skipping."
+            )
+            continue
+
+        image_names = dataset.get_items_names()
 
         for image_name in image_names:
             image_info = dataset.get_item_info(image_name)
@@ -516,6 +530,8 @@ def build_table():
     table_data = {"columns": columns, "data": rows}
 
     images_table.read_json(table_data)
+
+    sly.logger.debug(f"Successfully built images table with {len(rows)} rows.")
 
     images_table.loading = False
 
@@ -600,7 +616,7 @@ model_settings_card = Card(
             Container(
                 [field_confidence_threshhold, field_nms_threshhold],
                 direction="horizontal",
-                overflow=None
+                overflow=None,
             ),
             set_input_button,
         ]
@@ -620,6 +636,8 @@ grid_gallery = GridGallery(
     fill_rectangle=True,
     show_preview=True,
 )
+grid_gallery.hide()
+
 update_images_preview_button = Button("New random images", icon="zmdi zmdi-refresh")
 
 
@@ -630,7 +648,13 @@ def update_images_preview():
 
     grid_gallery.clean_up()
     NEW_PREVIEW_IMAGES_INFOS = []
-    for i in range(g.PREVIEW_IMAGES_COUNT):
+
+    preview_images_number = preview_images_number_input.get_value()
+
+    grid_gallery.columns_number = min(preview_images_number, g.COLUMNS_COUNT)
+    grid_gallery._update_layout()
+
+    for i in range(preview_images_number):
         img_info = random.choice(IMAGES_INFO_LIST)
         NEW_PREVIEW_IMAGES_INFOS.append(img_info)
         grid_gallery.append(
@@ -641,6 +665,8 @@ def update_images_preview():
     global PREVIEW_IMAGES_INFOS
     PREVIEW_IMAGES_INFOS = NEW_PREVIEW_IMAGES_INFOS
     update_predictions_preview_button.enable()
+
+    grid_gallery.show()
 
 
 update_predictions_preview_button = Button(
@@ -662,41 +688,53 @@ def update_predictions_preview():
     x0, y0, x1, y1 = *selected_bbox[0], *selected_bbox[1]
 
     annotations_list = []
-    for i, image_info in enumerate(PREVIEW_IMAGES_INFOS):
-        if IS_IMAGE_PROMPT:
-            inference_settings = dict(
-                mode="reference_image",
-                reference_bbox=[y0, x0, y1, x1],
-                reference_image_id=image_region_selector._image_id,
-                reference_class_name=class_input.get_value(),
-                confidence_threshold=[{"text_prompt": confidence_threshold}, {"reference_image": confidence_threshold}],
-                nms_threshold=nms_threshold,
+
+    with preview_progress(
+        message="Generating predictions...", total=len(PREVIEW_IMAGES_INFOS)
+    ) as pbar:
+        for i, image_info in enumerate(PREVIEW_IMAGES_INFOS):
+            if IS_IMAGE_PROMPT:
+                inference_settings = dict(
+                    mode="reference_image",
+                    reference_bbox=[y0, x0, y1, x1],
+                    reference_image_id=image_region_selector._image_id,
+                    reference_class_name=class_input.get_value(),
+                    confidence_threshold=[
+                        {"text_prompt": confidence_threshold},
+                        {"reference_image": confidence_threshold},
+                    ],
+                    nms_threshold=nms_threshold,
+                )
+                ann = g.api.task.send_request(
+                    MODEL_DATA["session_id"],
+                    "inference_image_id",
+                    data={"image_id": image_info.id, "settings": inference_settings},
+                    timeout=500,
+                )
+            else:
+                text_queries = text_prompt_textarea.get_value().split(";")
+                inference_settings = dict(
+                    mode="text_prompt",
+                    text_queries=text_queries,
+                    confidence_threshold=[
+                        {"text_prompt": confidence_threshold},
+                        {"reference_image": confidence_threshold},
+                    ],
+                    nms_threshold=nms_threshold,
+                )
+                ann = g.api.task.send_request(
+                    MODEL_DATA["session_id"],
+                    "inference_image_id",
+                    data={"image_id": image_info.id, "settings": inference_settings},
+                    timeout=500,
+                )
+            new_annotation = inference_json_anno_preprocessing(ann, g.project_meta)
+            annotations_list.append(new_annotation)
+            sly.logger.info(
+                f"{i+1} image processed. {len(PREVIEW_IMAGES_INFOS) - (i+1)} images left."
             )
-            ann = g.api.task.send_request(
-                MODEL_DATA["session_id"],
-                "inference_image_id",
-                data={"image_id": image_info.id, "settings": inference_settings},
-                timeout=500,
-            )
-        else:
-            text_queries = text_prompt_textarea.get_value().split(";")
-            inference_settings = dict(
-                mode="text_prompt",
-                text_queries=text_queries,
-                confidence_threshold=[{"text_prompt": confidence_threshold}, {"reference_image": confidence_threshold}],
-                nms_threshold=nms_threshold,
-            )
-            ann = g.api.task.send_request(
-                MODEL_DATA["session_id"],
-                "inference_image_id",
-                data={"image_id": image_info.id, "settings": inference_settings},
-                timeout=500,
-            )
-        new_annotation = inference_json_anno_preprocessing(ann, g.project_meta)
-        annotations_list.append(new_annotation)
-        sly.logger.info(
-            f"{i+1} image processed. {len(PREVIEW_IMAGES_INFOS) - (i+1)} images left."
-        )
+
+            pbar.update(1)
 
     grid_gallery.clean_up()
     for i, (image_info, annotation) in enumerate(
@@ -711,14 +749,43 @@ def update_predictions_preview():
     update_images_preview_button.enable()
 
 
+preview_images_number_input = InputNumber(value=12, min=1, max=60, step=1)
+preview_images_number_field = Field(
+    title="Number of images in preview",
+    description="Select how many images should be in preview gallery",
+    content=preview_images_number_input,
+)
+
+
+@preview_images_number_input.value_changed
+def preview_images_number_changed(preview_images_number):
+    if not grid_gallery._data:
+        sly.logger.debug("Preview gallery is empty, nothing to update.")
+        return
+
+    update_images_preview()
+
+
+preview_progress = Progress()
+
+preview_buttons_flexbox = Flexbox(
+    widgets=[
+        update_images_preview_button,
+        update_predictions_preview_button,
+    ],
+)
+
+
 preview_card = Card(
     title="Preview results",
     description="Model prediction result preview",
-    content=grid_gallery,
-    content_top_right=Container(
-        [update_images_preview_button, update_predictions_preview_button],
-        direction="horizontal",
-        overflow=None
+    content=Container(
+        [
+            preview_images_number_field,
+            preview_buttons_flexbox,
+            preview_progress,
+            grid_gallery,
+        ]
     ),
 )
 
@@ -816,7 +883,10 @@ def run_model():
                             reference_bbox=[y0, x0, y1, x1],
                             reference_image_id=image_region_selector._image_id,
                             reference_class_name=class_input.get_value(),
-                            confidence_threshold=[{"text_prompt": confidence_threshold}, {"reference_image": confidence_threshold}],
+                            confidence_threshold=[
+                                {"text_prompt": confidence_threshold},
+                                {"reference_image": confidence_threshold},
+                            ],
                             nms_threshold=nms_threshold,
                         )
                         ann = g.api.task.send_request(
@@ -832,7 +902,10 @@ def run_model():
                         inference_settings = dict(
                             mode="text_prompt",
                             text_queries=text_queries,
-                            confidence_threshold=[{"text_prompt": confidence_threshold}, {"reference_image": confidence_threshold}],
+                            confidence_threshold=[
+                                {"text_prompt": confidence_threshold},
+                                {"reference_image": confidence_threshold},
+                            ],
                             nms_threshold=nms_threshold,
                         )
                         ann = g.api.task.send_request(
