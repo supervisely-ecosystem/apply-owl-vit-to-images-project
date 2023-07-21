@@ -7,7 +7,6 @@ import supervisely as sly
 from supervisely.app.widgets import (
     Button,
     Card,
-    Progress,
     Container,
     Stepper,
     ImageRegionSelector,
@@ -177,7 +176,7 @@ def download_data():
 
                     progress_bar_download_data.show()
                     with progress_bar_download_data(
-                        message=f"Processing images...", total=missed_items_cnt
+                        message="Processing images...", total=missed_items_cnt
                     ) as pbar:
                         sly.Project.download(
                             api=g.api,
@@ -201,7 +200,7 @@ def download_data():
                 progress_bar_download_data.show()
                 sly.fs.mkdir(g.project_dir)
                 with progress_bar_download_data(
-                    message=f"Processing images...", total=g.project_info.items_count
+                    message="Processing images...", total=g.project_info.items_count
                 ) as pbar:
                     sly.Project.download(
                         api=g.api,
@@ -843,6 +842,8 @@ def run_model():
             output_project_id = output_project.id
             is_new_project = True
         else:
+            # ! local variable 'is_new_project' is assigned to but never used
+            # The variable is not used, consider removing it.
             is_new_project = False
 
         output_project_meta = sly.ProjectMeta.from_json(
