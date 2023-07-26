@@ -19,7 +19,7 @@
   },
   "task_location": "workspace_tasks",
   "need_gpu": false,
-  "gpu": "preferred",
+  "gpu": "no",
   "community_agent": true,
   "icon": "https://user-images.githubusercontent.com/115161827/230065661-6ad4a9e0-20bf-452a-b3bd-10646436e335.png",
   "icon_cover": true,
