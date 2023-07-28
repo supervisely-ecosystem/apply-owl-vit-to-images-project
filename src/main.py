@@ -57,12 +57,7 @@ def get_images_infos_for_preview():
     return IMAGES_INFO_LIST
 
 
-# IMAGES_INFO_LIST = get_images_infos_for_preview()
-IMAGES_INFO_LIST = []
-for dataset_id in g.DATASET_IDS:
-    image_infos = g.api.image.get_list(dataset_id)
-    IMAGES_INFO_LIST.extend(image_infos)
-
+IMAGES_INFO_LIST = get_images_infos_for_preview()
 
 ######################
 ### Input project card
@@ -72,9 +67,15 @@ dataset_selector = SelectDataset(
 )
 
 
-@dataset_selector.value_changed
-def on_dataset_selected(new_dataset_ids):
+# def func_caller(value):
+#    on_dataset_selected(value)
+
+
+def on_dataset_selected(new_dataset_ids=None):
     global IMAGES_INFO_LIST, CURRENT_REF_IMAGE_INDEX, REF_IMAGE_HISTORY
+
+    if not new_dataset_ids:
+        new_dataset_ids = dataset_selector.get_selected_ids()
 
     new_project_id = dataset_selector._project_selector.get_selected_id()
     if new_project_id != g.project_id:
@@ -111,11 +112,14 @@ def on_dataset_selected(new_dataset_ids):
         button_download_data.enable()
 
 
+dataset_selector.value_changed(on_dataset_selected)
 button_download_data = Button("Select data")
 
 
 @button_download_data.click
 def download_data():
+    on_dataset_selected()
+
     if data_card.is_disabled() is True:
         toggle_cards(["data_card"], enabled=True)
         toggle_cards(
@@ -514,7 +518,6 @@ model_settings_card = Card(
             Container(
                 [field_confidence_threshhold, field_nms_threshhold],
                 direction="horizontal",
-                overflow=None,
             ),
             set_input_button,
         ]
