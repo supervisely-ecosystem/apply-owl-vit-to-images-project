@@ -28,7 +28,11 @@ Application key points:
 
 - Set up model input data as text-prompt or reference-image
 - Preview detection results
-- Apply model to project images and save new annotations to new project or add to existed  
+- Apply model to project images and save new annotations to new project or add to existed
+
+🔥🔥🔥 Check out our [youtube tutorial](https://youtu.be/PnhAsG-GFHo) and the [complete guide in our blog](https://supervisely.com/blog/owl-vit/):   
+
+<a href="https://youtu.be/PnhAsG-GFHo" target="_blank"><img src="https://github.com/supervisely-ecosystem/serve-owl-vit/assets/12828725/f1a3589a-2c4d-4467-a2dc-077f56422a98"/></a>
 
 ## How to Run
 
