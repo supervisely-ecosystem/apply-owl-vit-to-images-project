@@ -739,11 +739,6 @@ def run_model():
                 change_name_if_conflict=True,
             )
             output_project_id = output_project.id
-            # is_new_project = True
-        # else:
-        # ! local variable 'is_new_project' is assigned to but never used
-        # The variable is not used, consider removing it.
-        # is_new_project = False
 
         output_project_meta = sly.ProjectMeta.from_json(
             g.api.project.get_meta(output_project_id)

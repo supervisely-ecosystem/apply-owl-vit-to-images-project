@@ -3,7 +3,7 @@
   "type": "app",
   "version": "2.0.0",
   "description": "Class-angnostic object detection model",
-  "docker_image": "supervisely/base-py-sdk:6.72.70",
+  "docker_image": "supervisely/base-py-sdk:6.72.83",
   "categories": [
     "neural network",
     "object detection",
@@ -25,6 +25,5 @@
   "icon_cover": true,
   "poster": "https://user-images.githubusercontent.com/115161827/230065782-f033aa7d-6acc-405b-89e3-81330bb66bbb.png",
   "release": { "version":"v1.0.0", "name":"init" },
-  "slug": "supervisely-ecosystem/owl-vit-app",
-  "docker_image": "supervisely/base-py-sdk:6.72.78"
+  "slug": "supervisely-ecosystem/owl-vit-app"
 }
