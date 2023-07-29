@@ -1,6 +1,4 @@
-import os
 import random
-import shutil
 from typing import List
 
 import supervisely as sly
@@ -26,7 +24,6 @@ from supervisely.app.widgets import (
     Grid,
     Empty,
     Table,
-    Text,
 )
 
 import src.sly_globals as g
@@ -62,7 +59,6 @@ def get_images_infos_for_preview():
 
 IMAGES_INFO_LIST = get_images_infos_for_preview()
 
-
 ######################
 ### Input project card
 ######################
@@ -71,10 +67,16 @@ dataset_selector = SelectDataset(
 )
 
 
-@dataset_selector.value_changed
-def on_dataset_selected(new_dataset_ids):
+# def func_caller(value):
+#    on_dataset_selected(value)
+
+
+def on_dataset_selected(new_dataset_ids=None):
     global IMAGES_INFO_LIST, CURRENT_REF_IMAGE_INDEX, REF_IMAGE_HISTORY
-    button_download_data.loading = True
+
+    if not new_dataset_ids:
+        new_dataset_ids = dataset_selector.get_selected_ids()
+
     new_project_id = dataset_selector._project_selector.get_selected_id()
     if new_project_id != g.project_id:
         dataset_selector.disable()
@@ -92,7 +94,6 @@ def on_dataset_selected(new_dataset_ids):
     else:
         if set(g.DATASET_IDS) != set(new_dataset_ids):
             g.DATASET_IDS = new_dataset_ids
-            text_download_data.hide()
             IMAGES_INFO_LIST = get_images_infos_for_preview()
             # update_images_preview()
             CURRENT_REF_IMAGE_INDEX = 0
@@ -106,19 +107,19 @@ def on_dataset_selected(new_dataset_ids):
     )
 
     if len(new_dataset_ids) == 0:
-        button_download_data.hide()
+        button_download_data.disable()
     else:
-        button_download_data.show()
-    button_download_data.loading = False
+        button_download_data.enable()
 
 
-text_download_data = Text()
-text_download_data.hide()
+dataset_selector.value_changed(on_dataset_selected)
 button_download_data = Button("Select data")
 
 
 @button_download_data.click
 def download_data():
+    on_dataset_selected()
+
     if data_card.is_disabled() is True:
         toggle_cards(["data_card"], enabled=True)
         toggle_cards(
@@ -131,7 +132,6 @@ def download_data():
             enabled=False,
         )
         button_download_data.enable()
-        text_download_data.hide()
         button_download_data.text = "Select data"
         set_model_type_button.disable()
         set_model_type_button.text = "Select model"
@@ -154,99 +154,19 @@ def download_data():
             ],
             enabled=False,
         )
-        g.project_dir = os.path.join(g.projects_dir, str(g.project_id))
-        try:
-            if sly.fs.dir_exists(g.project_dir):
-                tmp_project = sly.Project(g.project_dir, sly.OpenMode.READ)
-                selected_datasets = [
-                    g.api.dataset.get_info_by_id(id) for id in g.DATASET_IDS
-                ]
-                missed_datasets = [
-                    ds
-                    for ds in selected_datasets
-                    if ds.name not in tmp_project.datasets.keys()
-                ]
-                missed_datasets_ids = [ds.id for ds in missed_datasets]
-                missed_items_cnt = sum([ds.items_count for ds in missed_datasets])
-                if len(missed_datasets) > 0:
-                    sly.logger.info(
-                        f"Datasets {missed_datasets_ids} were missed in project directory: {g.project_dir}."
-                    )
-                    temp_project_dir = os.path.join(g.projects_dir, "temp_project")
 
-                    progress_bar_download_data.show()
-                    with progress_bar_download_data(
-                        message="Processing images...", total=missed_items_cnt
-                    ) as pbar:
-                        sly.Project.download(
-                            api=g.api,
-                            project_id=g.project_id,
-                            dest_dir=temp_project_dir,
-                            batch_size=100,
-                            dataset_ids=missed_datasets_ids,
-                            progress_cb=pbar.update,
-                            only_image_tags=False,
-                            save_image_info=True,
-                        )
-                    for ds in missed_datasets:
-                        src_ds_path = os.path.join(temp_project_dir, ds.name)
-                        dst_ds_path = os.path.join(g.project_dir, ds.name)
-                        shutil.move(src_ds_path, dst_ds_path)
-                    sly.fs.remove_dir(temp_project_dir)
-                    sly.logger.info("Missed datasets was succesfully downloaded.")
-                else:
-                    sly.logger.info("Data already downloaded.")
-            else:
-                progress_bar_download_data.show()
-                sly.fs.mkdir(g.project_dir)
-                with progress_bar_download_data(
-                    message="Processing images...", total=g.project_info.items_count
-                ) as pbar:
-                    sly.Project.download(
-                        api=g.api,
-                        project_id=g.project_id,
-                        dest_dir=g.project_dir,
-                        batch_size=100,
-                        dataset_ids=g.DATASET_IDS,
-                        progress_cb=pbar.update,
-                        only_image_tags=False,
-                        save_image_info=True,
-                    )
-                sly.logger.info("Data successfully downloaded.")
-            g.project_fs = sly.Project(g.project_dir, sly.OpenMode.READ)
-            build_table()
+        build_table()
 
-            input_project_thmb.set(info=g.project_info)
-            input_project_thmb.show()
-            button_download_data.text = "Change data"
-            text_download_data.text = "Data was successfully downloaded."
-            text_download_data.status = "success"
-            text_download_data.show()
-            toggle_cards(["inference_type_selection_card"], enabled=True)
-            if select_model_session.get_selected_id() is not None:
-                set_model_type_button.enable()
-            stepper.set_active_step(2)
-        except Exception as e:
-            sly.logger.info(f"Something went wrong: {e}")
-            button_download_data.text = "Select data"
-            text_download_data.text = "Data download failed"
-            text_download_data.status = "error"
-            text_download_data.show()
-            input_project_thmb.hide()
-            toggle_cards(
-                [
-                    "inference_type_selection_card",
-                    "model_settings_card",
-                    "preview_card",
-                    "run_model_card",
-                ],
-                enabled=False,
-            )
-            set_model_type_button.disable()
-            stepper.set_active_step(1)
-        finally:
-            button_download_data.enable()
-            progress_bar_download_data.hide()
+        input_project_thmb.set(info=g.project_info)
+        input_project_thmb.show()
+        button_download_data.text = "Change data"
+        toggle_cards(["inference_type_selection_card"], enabled=True)
+        if select_model_session.get_selected_id() is not None:
+            set_model_type_button.enable()
+        stepper.set_active_step(2)
+
+        button_download_data.enable()
+        progress_bar_download_data.hide()
 
 
 progress_bar_download_data = Progress(hide_on_finish=False)
@@ -260,7 +180,6 @@ data_card = Card(
             dataset_selector,
             progress_bar_download_data,
             input_project_thmb,
-            text_download_data,
             button_download_data,
         ]
     ),
@@ -493,33 +412,17 @@ def build_table():
     images_table.loading = True
     images_table.read_json(None)
 
-    project = g.project_fs
-
-    dataset_ids = g.DATASET_IDS
-    sly.logger.debug(f"Read dataset ids from g.DATASET_IDS: {dataset_ids}")
-
-    dataset_names = [g.api.dataset.get_info_by_id(ds_id).name for ds_id in dataset_ids]
-
-    sly.logger.debug(f"Retrieved dataset names from API: {dataset_names}")
-
     rows = []
-    for dataset in project.datasets:
-        if dataset.name not in dataset_names:
-            sly.logger.debug(
-                f"Dataset {dataset.name} not in selected datasets: {dataset_names}. Skipping."
-            )
-            continue
+    for dataset_id in g.DATASET_IDS:
+        image_infos = g.api.image.get_list(dataset_id)
+        dataset_info = g.api.dataset.get_info_by_id(dataset_id)
 
-        image_names = dataset.get_items_names()
-
-        for image_name in image_names:
-            image_info = dataset.get_item_info(image_name)
-
+        for image_info in image_infos:
             rows.append(
                 [
-                    dataset.name,
+                    dataset_info.name,
                     image_info.id,
-                    image_name,
+                    image_info.name,
                     image_info.width,
                     image_info.height,
                     sly.app.widgets.Table.create_button("SELECT"),
@@ -615,7 +518,6 @@ model_settings_card = Card(
             Container(
                 [field_confidence_threshhold, field_nms_threshhold],
                 direction="horizontal",
-                overflow=None,
             ),
             set_input_button,
         ]
@@ -840,11 +742,6 @@ def run_model():
                 change_name_if_conflict=True,
             )
             output_project_id = output_project.id
-            is_new_project = True
-        else:
-            # ! local variable 'is_new_project' is assigned to but never used
-            # The variable is not used, consider removing it.
-            is_new_project = False
 
         output_project_meta = sly.ProjectMeta.from_json(
             g.api.project.get_meta(output_project_id)
