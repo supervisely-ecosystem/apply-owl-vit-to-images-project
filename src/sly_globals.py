@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 if sly.is_development():
     load_dotenv("local.env")
-    load_dotenv(os.path.expanduser("~/supervisely_demo.env"))
+    load_dotenv(os.path.expanduser("~/supervisely.env"))
 
 app_root_directory = str(Path(__file__).parent.absolute().parents[0])
 sly.logger.info(f"Root source directory: {app_root_directory}")
