@@ -44,11 +44,13 @@ def get_images_infos_for_preview():
         datasets_list = g.api.dataset.get_list(g.project_id)
     IMAGES_INFO_LIST = []
     for dataset in datasets_list:
-        samples_count = (
-            dataset.images_count
-            if len(datasets_list) == 1
-            else dataset.images_count * (100 - len(datasets_list)) // 100
-        )
+        if len(datasets_list) == 1:
+            samples_count = dataset.images_count
+        else:
+            samples_count = dataset.images_count * (100 - len(datasets_list)) // 100
+            if samples_count == 0:
+                samples_count = 1
+        
         IMAGES_INFO_LIST += random.sample(
             g.api.image.get_list(dataset.id), samples_count
         )
