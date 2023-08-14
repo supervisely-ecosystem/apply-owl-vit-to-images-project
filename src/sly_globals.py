@@ -4,8 +4,8 @@ from pathlib import Path
 import supervisely as sly
 from dotenv import load_dotenv
 
-load_dotenv("local.env")
-load_dotenv(os.path.expanduser("~/supervisely.env"))
+# load_dotenv("local.env")
+# load_dotenv(os.path.expanduser("~/supervisely_demo.env"))
 
 app_root_directory = str(Path(__file__).parent.absolute().parents[0])
 sly.logger.info(f"Root source directory: {app_root_directory}")
