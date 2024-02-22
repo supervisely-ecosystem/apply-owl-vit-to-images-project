@@ -256,7 +256,12 @@ def set_model_type():
                 set_input_button.enable()
                 stepper.set_active_step(3)
             except Exception as e:
-                sly.logger.error(f"Cannot to connect to model. {e}")
+                sly.app.show_dialog(
+                    "Error",
+                    f"Cannot to connect to model. Make sure that model is deployed and try again.",
+                    status="error",
+                )
+                sly.logger.warn(f"Cannot to connect to model. {e}")
                 set_model_type_button.enable()
                 set_model_type_button.text = "Connect to model"
                 model_set_done.hide()
@@ -377,13 +382,13 @@ def set_model_input():
         stepper.set_active_step(3)
     else:
         if IS_IMAGE_PROMPT and class_input.get_value().strip() == "":
-            raise sly.app.DialogWindowWarning(
-                title="Wrong value", description="Class name can not be empty."
-            )
+            sly.app.show_dialog("Wrong value", "Class name can not be empty.", status="error")
+            sly.logger.warning("Class name can not be empty.")
+            return
         elif not IS_IMAGE_PROMPT and text_prompt_textarea.get_value().strip() == "":
-            raise sly.app.DialogWindowWarning(
-                title="Wrong value", description="Text prompt can not be empty."
-            )
+            sly.app.show_dialog("Wrong value", "Text prompt can not be empty.", status="error")
+            sly.logger.warning("Text prompt can not be empty.")
+            return
         else:
             set_input_button.text = "Change model input"
             update_images_preview()
