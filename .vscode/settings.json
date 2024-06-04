@@ -8,10 +8,10 @@
   "editor.formatOnPaste": false,
   "editor.formatOnType": false,
   "[html]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
+    "editor.defaultFormatter": "ms-python.black-formatter"
   },
   "[json]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
+    "editor.defaultFormatter": "ms-python.black-formatter"
   },
   "python.formatting.provider": "black",
   "debug.inlineValues": "off",
