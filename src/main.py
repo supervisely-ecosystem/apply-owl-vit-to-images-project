@@ -48,9 +48,9 @@ def get_images_infos_for_preview():
             samples_count = dataset.images_count
         else:
             samples_count = dataset.images_count * (100 - len(datasets_list)) // 100
-            if samples_count == 0:
-                samples_count = 1
-        
+        if samples_count == 0:
+            break
+
         IMAGES_INFO_LIST += random.sample(
             g.api.image.get_list(dataset.id), samples_count
         )
@@ -382,11 +382,15 @@ def set_model_input():
         stepper.set_active_step(3)
     else:
         if IS_IMAGE_PROMPT and class_input.get_value().strip() == "":
-            sly.app.show_dialog("Wrong value", "Class name can not be empty.", status="error")
+            sly.app.show_dialog(
+                "Wrong value", "Class name can not be empty.", status="error"
+            )
             sly.logger.warning("Class name can not be empty.")
             return
         elif not IS_IMAGE_PROMPT and text_prompt_textarea.get_value().strip() == "":
-            sly.app.show_dialog("Wrong value", "Text prompt can not be empty.", status="error")
+            sly.app.show_dialog(
+                "Wrong value", "Text prompt can not be empty.", status="error"
+            )
             sly.logger.warning("Text prompt can not be empty.")
             return
         else:
@@ -734,7 +738,6 @@ def run_model():
         nms_threshold = nms_threshhold_input.get_value()
 
         output_project_id = destination_project.get_selected_project_id()
-        conflict_resolution = destination_project.get_conflict_resolution()
         use_project_datasets_structure = (
             destination_project.use_project_datasets_structure()
         )
@@ -760,7 +763,7 @@ def run_model():
                 sly.TagMeta("confidence", sly.TagValueType.ANY_NUMBER)
             )
 
-        def add_new_classes_to_proj_meta(anns):
+        def add_new_classes_to_proj_meta(anns, output_project_meta):
             for ann in anns:
                 for i, obj in enumerate(ann["annotation"]["objects"]):
                     label = obj["classTitle"] + "_pred"
@@ -771,8 +774,7 @@ def run_model():
                         output_project_meta = output_project_meta.add_obj_class(
                             new_obj_class
                         )
-
-
+            return output_project_meta
 
         if use_project_datasets_structure is False:
             if output_dataset_id is None:
@@ -788,9 +790,7 @@ def run_model():
                 output_dataset = g.api.dataset.get_info_by_id(output_dataset_id)
         else:
             output_dataset_name = dataset.name
-            if not g.api.dataset.exists(
-                output_project_id, output_dataset_name
-            ):
+            if not g.api.dataset.exists(output_project_id, output_dataset_name):
                 output_dataset = g.api.dataset.create(
                     project_id=output_project_id,
                     name=output_dataset_name,
@@ -842,32 +842,68 @@ def run_model():
                     img_ids = [image_info.id for image_info in img_infos_batch]
 
                     # get existing and new annotations
-                    image_anns_json = [img_ann.annotation for img_ann in g.api.annotation.download_batch(dataset.id, img_ids)]
-                    new_anns = [g.api.task.send_request(MODEL_DATA["session_id"], "inference_image_id", data={"image_id": image_info.id,"settings": get_inference_settings()}, timeout=500) for image_info in img_infos_batch]
+                    image_anns_json = [
+                        img_ann.annotation
+                        for img_ann in g.api.annotation.download_batch(
+                            dataset.id, img_ids
+                        )
+                    ]
+                    image_anns = [
+                        sly.Annotation.from_json(image_ann_json, output_project_meta)
+                        for image_ann_json in image_anns_json
+                    ]
+                    new_anns = [
+                        g.api.task.send_request(
+                            MODEL_DATA["session_id"],
+                            "inference_image_id",
+                            data={
+                                "image_id": image_info.id,
+                                "settings": get_inference_settings(),
+                            },
+                            timeout=500,
+                        )
+                        for image_info in img_infos_batch
+                    ]
+
                     # update project meta to include new classes
-                    add_new_classes_to_proj_meta(new_anns) 
+                    output_project_meta = add_new_classes_to_proj_meta(
+                        new_anns, output_project_meta
+                    )
                     g.api.project.update_meta(
                         output_project_id, output_project_meta.to_json()
                     )
 
                     # merge annotations
                     result_anns = []
-                    for image_ann_json, new_ann in zip(image_anns_json, new_anns):
-                        image_ann = sly.Annotation.from_json(image_ann_json, output_project_meta)
-                        new_ann = sly.Annotation.from_json(new_ann["annotation"], output_project_meta)
-                        image_ann.add_labels(new_ann.labels)
-                        result_anns.append(image_ann)
+                    for image_ann, new_ann in zip(image_anns, new_anns):
+                        new_ann = sly.Annotation.from_json(
+                            new_ann["annotation"], output_project_meta
+                        )
+                        sly.logger.debug(
+                            f"New annotations added to images: {len(new_ann.labels)}"
+                        )
+                        result_anns.append(image_ann.add_labels(new_ann.labels))
 
                     # upload new data
-                    if (g.project_id != output_project_id or dataset.id != output_dataset_id):
-                        image_names = [image_info.name for image_info in img_infos_batch]
-                        image_infos = g.api.image.upload_ids(output_dataset.id, image_names, img_ids, conflict_resolution=conflict_resolution)
+                    if (
+                        destination_project.get_selected_project_id() != g.project_id
+                        or destination_project.get_selected_dataset_id() != g.dataset_id
+                    ):
+                        image_names = [
+                            image_info.name for image_info in img_infos_batch
+                        ]
+                        image_infos = g.api.image.upload_ids(
+                            output_dataset.id,
+                            image_names,
+                            img_ids,
+                            conflict_resolution=destination_project.get_conflict_resolution(),
+                        )
                         img_ids = [image_info.id for image_info in image_infos]
                     g.api.annotation.upload_anns(img_ids, result_anns)
                     pbar.update(len(img_ids))
 
         output_project_info = g.api.project.get_info_by_id(output_project_id)
-        output_project_thmb.set(info=output_project_info)
+        output_project_thmb.set(output_project_info)
         output_project_thmb.show()
         sly.logger.info("Project was successfully labeled")
     except Exception as e:
