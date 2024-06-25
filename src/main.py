@@ -51,9 +51,7 @@ def get_images_infos_for_preview():
         if samples_count == 0:
             break
 
-        IMAGES_INFO_LIST += random.sample(
-            g.api.image.get_list(dataset.id), samples_count
-        )
+        IMAGES_INFO_LIST += random.sample(g.api.image.get_list(dataset.id), samples_count)
         if len(IMAGES_INFO_LIST) >= 1000:
             break
     return IMAGES_INFO_LIST
@@ -100,9 +98,7 @@ def on_dataset_selected(new_dataset_ids=None):
             # update_images_preview()
             CURRENT_REF_IMAGE_INDEX = 0
             REF_IMAGE_HISTORY = [CURRENT_REF_IMAGE_INDEX]
-            image_region_selector.image_update(
-                IMAGES_INFO_LIST[CURRENT_REF_IMAGE_INDEX]
-            )
+            image_region_selector.image_update(IMAGES_INFO_LIST[CURRENT_REF_IMAGE_INDEX])
 
     sly.logger.info(
         f"Team: {g.team.id} \t Project: {g.project_info.id} \t Datasets: {g.DATASET_IDS}"
@@ -221,9 +217,7 @@ def set_model_type():
         select_model_session.enable()
         set_model_type_button.enable()
         set_model_type_button.text = "Connect to model"
-        toggle_cards(
-            ["model_settings_card", "preview_card", "run_model_card"], enabled=False
-        )
+        toggle_cards(["model_settings_card", "preview_card", "run_model_card"], enabled=False)
         set_input_button.disable()
         set_input_button.text = "Set model input"
         update_images_preview_button.disable()
@@ -281,9 +275,7 @@ def set_model_type():
 inference_type_selection_card = Card(
     title="Connect to model",
     description="Select served model from list below",
-    content=Container(
-        [select_model_session, model_info, model_set_done, set_model_type_button]
-    ),
+    content=Container([select_model_session, model_info, model_set_done, set_model_type_button]),
 )
 
 
@@ -315,12 +307,8 @@ def bbox_updated(new_scaled_bbox):
 previous_image_button = Button(
     "Previous image", icon="zmdi zmdi-skip-previous", button_size="small"
 )
-next_image_button = Button(
-    "Next image", icon="zmdi zmdi-skip-next", button_size="small"
-)
-random_image_button = Button(
-    "New random image", icon="zmdi zmdi-refresh", button_size="small"
-)
+next_image_button = Button("Next image", icon="zmdi zmdi-skip-next", button_size="small")
+random_image_button = Button("New random image", icon="zmdi zmdi-refresh", button_size="small")
 set_input_button = Button("Set model input")
 previous_image_button.disable()
 
@@ -382,15 +370,11 @@ def set_model_input():
         stepper.set_active_step(3)
     else:
         if IS_IMAGE_PROMPT and class_input.get_value().strip() == "":
-            sly.app.show_dialog(
-                "Wrong value", "Class name can not be empty.", status="error"
-            )
+            sly.app.show_dialog("Wrong value", "Class name can not be empty.", status="error")
             sly.logger.warning("Class name can not be empty.")
             return
         elif not IS_IMAGE_PROMPT and text_prompt_textarea.get_value().strip() == "":
-            sly.app.show_dialog(
-                "Wrong value", "Text prompt can not be empty.", status="error"
-            )
+            sly.app.show_dialog("Wrong value", "Text prompt can not be empty.", status="error")
             sly.logger.warning("Text prompt can not be empty.")
             return
         else:
@@ -581,9 +565,7 @@ def update_images_preview():
     grid_gallery.show()
 
 
-update_predictions_preview_button = Button(
-    "Predictions preview", icon="zmdi zmdi-labels"
-)
+update_predictions_preview_button = Button("Predictions preview", icon="zmdi zmdi-labels")
 
 
 @update_predictions_preview_button.click
@@ -649,9 +631,7 @@ def update_predictions_preview():
             pbar.update(1)
 
     grid_gallery.clean_up()
-    for i, (image_info, annotation) in enumerate(
-        zip(PREVIEW_IMAGES_INFOS, annotations_list)
-    ):
+    for i, (image_info, annotation) in enumerate(zip(PREVIEW_IMAGES_INFOS, annotations_list)):
         grid_gallery.append(
             image_url=image_info.preview_url,
             annotation=annotation,
@@ -704,9 +684,7 @@ preview_card = Card(
 #######################
 ### Applying model card
 #######################
-destination_project = DestinationProject(
-    g.workspace.id, project_type=sly.ProjectType.IMAGES
-)
+destination_project = DestinationProject(g.workspace.id, project_type=sly.ProjectType.IMAGES)
 apply_progress_bar = Progress(hide_on_finish=False)
 run_model_button = Button("Run model")
 
@@ -738,9 +716,7 @@ def run_model():
         nms_threshold = nms_threshhold_input.get_value()
 
         output_project_id = destination_project.get_selected_project_id()
-        use_project_datasets_structure = (
-            destination_project.use_project_datasets_structure()
-        )
+        use_project_datasets_structure = destination_project.use_project_datasets_structure()
         output_dataset_id = destination_project.get_selected_dataset_id()
         if output_project_id is None:
             output_project_name = destination_project.get_project_name()
@@ -754,9 +730,7 @@ def run_model():
             )
             output_project_id = output_project.id
 
-        output_project_meta = sly.ProjectMeta.from_json(
-            g.api.project.get_meta(output_project_id)
-        )
+        output_project_meta = sly.ProjectMeta.from_json(g.api.project.get_meta(output_project_id))
         output_project_meta = output_project_meta.merge(g.project_meta)
         if output_project_meta.get_tag_meta("confidence") is None:
             output_project_meta = output_project_meta.add_tag_meta(
@@ -771,9 +745,7 @@ def run_model():
 
                     if output_project_meta.get_obj_class(label) is None:
                         new_obj_class = sly.ObjClass(label, sly.Rectangle)
-                        output_project_meta = output_project_meta.add_obj_class(
-                            new_obj_class
-                        )
+                        output_project_meta = output_project_meta.add_obj_class(new_obj_class)
             return output_project_meta
 
         if use_project_datasets_structure is False:
@@ -844,9 +816,7 @@ def run_model():
                     # get existing and new annotations
                     image_anns_json = [
                         img_ann.annotation
-                        for img_ann in g.api.annotation.download_batch(
-                            dataset.id, img_ids
-                        )
+                        for img_ann in g.api.annotation.download_batch(dataset.id, img_ids)
                     ]
                     image_anns = [
                         sly.Annotation.from_json(image_ann_json, output_project_meta)
@@ -869,9 +839,7 @@ def run_model():
                     output_project_meta = add_new_classes_to_proj_meta(
                         new_anns, output_project_meta
                     )
-                    g.api.project.update_meta(
-                        output_project_id, output_project_meta.to_json()
-                    )
+                    g.api.project.update_meta(output_project_id, output_project_meta.to_json())
 
                     # merge annotations
                     result_anns = []
@@ -879,9 +847,7 @@ def run_model():
                         new_ann = sly.Annotation.from_json(
                             new_ann["annotation"], output_project_meta
                         )
-                        sly.logger.debug(
-                            f"New annotations added to images: {len(new_ann.labels)}"
-                        )
+                        sly.logger.debug(f"New annotations added to images: {len(new_ann.labels)}")
                         result_anns.append(image_ann.add_labels(new_ann.labels))
 
                     # upload new data
@@ -889,9 +855,7 @@ def run_model():
                         destination_project.get_selected_project_id() != g.project_id
                         or destination_project.get_selected_dataset_id() != g.dataset_id
                     ):
-                        image_names = [
-                            image_info.name for image_info in img_infos_batch
-                        ]
+                        image_names = [image_info.name for image_info in img_infos_batch]
                         image_infos = g.api.image.upload_ids(
                             output_dataset.id,
                             image_names,
