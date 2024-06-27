@@ -2,6 +2,9 @@ import supervisely as sly
 import src.sly_globals as g
 from typing import List
 from supervisely.app.widgets import Progress
+from supervisely.api.module_api import ApiField
+from supervisely.annotation.label import LabelJsonFields
+from supervisely.annotation.annotation import AnnotationJsonFields
 
 
 apply_progress_bar = Progress(hide_on_finish=False)
@@ -17,16 +20,19 @@ def run(
     ) -> sly.ProjectMeta:
         project_meta_needs_update = False
         for ann in anns:
-            for label in ann.labels:
-                label.obj_class.name += "_pred"
-                if output_project_meta.get_obj_class(label) is None:
-                    new_obj_class = sly.ObjClass(label, sly.Rectangle)
+            for label in ann[ApiField.ANNOTATION][AnnotationJsonFields.LABELS]:
+                new_obj_class_name = label[LabelJsonFields.OBJ_CLASS_NAME] + "_pred"
+                label[LabelJsonFields.OBJ_CLASS_NAME] += "_pred"
+                if output_project_meta.get_obj_class(new_obj_class_name) is None:
+                    sly.logger.debug(f"Adding {new_obj_class_name} to the project meta")
+                    new_obj_class = sly.ObjClass(new_obj_class_name, sly.Rectangle)
                     output_project_meta = output_project_meta.add_obj_class(new_obj_class)
                     project_meta_needs_update = True
 
         if project_meta_needs_update:
             g.api.project.update_meta(output_project_id, output_project_meta)
-        return output_project_meta
+            sly.logger.debug(f"Project meta successfully updated")
+        return output_project_meta, anns
 
     output_project_id = destination_project.get_selected_project_id()
     if output_project_id is None:
@@ -62,7 +68,7 @@ def run(
         output_project_meta = output_project_meta.add_tag_meta(
             sly.TagMeta("confidence", sly.TagValueType.ANY_NUMBER)
         )
-        g.api.project.update_meta(output_project_id, output_project_meta)
+    g.api.project.update_meta(output_project_id, output_project_meta)
 
     # apply models to project
     datasets_list = [g.api.dataset.get_info_by_id(ds_id) for ds_id in g.DATASET_IDS]
@@ -79,6 +85,9 @@ def run(
                     sly.Annotation.from_json(img_ann.annotation, output_project_meta)
                     for img_ann in g.api.annotation.download_batch(dataset.id, img_ids)
                 ]
+                sly.logger.debug(
+                    f"Sending request to generate predictions for {len(img_infos_batch)} images..."
+                )
                 new_anns = [
                     g.api.task.send_request(
                         MODEL_DATA["session_id"],
@@ -91,22 +100,31 @@ def run(
                     )
                     for image_info in img_infos_batch
                 ]
+                sly.logger.debug(f"Updating the project meta with new classes")
+                output_project_meta, new_ann = add_new_classes_to_proj_meta(
+                    new_anns, output_project_meta
+                )
 
-                output_project_meta = add_new_classes_to_proj_meta(new_anns, output_project_meta)
-
-                # merge annotations
+                sly.logger.debug(f"Merging new and existing annotations")
                 result_anns = []
+                new_anns_objects_added = 0
                 for image_ann, new_ann in zip(image_anns, new_anns):
-                    new_ann = sly.Annotation.from_json(new_ann["annotation"], output_project_meta)
-                    sly.logger.debug(f"New annotations added to images: {len(new_ann.labels)}")
+                    new_ann = sly.Annotation.from_json(
+                        new_ann[ApiField.ANNOTATION], output_project_meta
+                    )
+                    new_anns_objects_added += len(new_ann.labels)
                     result_anns.append(image_ann.add_labels(new_ann.labels))
+                if new_anns_objects_added > 0:
+                    sly.logger.debug(f"New annotations added to images: {new_anns_objects_added}")
+                else:
+                    sly.logger.info(f"No objects were added during inference for this batch")
 
-                # upload new data
                 # if (
                 #     destination_project.get_selected_project_id() != g.project_id
                 #     or destination_project.get_selected_dataset_id() != g.dataset_id
                 # ):
                 image_names = [image_info.name for image_info in img_infos_batch]
+                sly.logger.debug(f"Uploading {len(image_names)} images")
                 image_infos = g.api.image.upload_ids(
                     output_dataset_id,
                     image_names,
@@ -114,7 +132,9 @@ def run(
                     conflict_resolution=destination_project.get_conflict_resolution(),
                 )
                 img_ids = [image_info.id for image_info in image_infos]
+                sly.logger.debug(f"Uploading {len(result_anns)} annotations")
                 g.api.annotation.upload_anns(img_ids, result_anns)
+
                 pbar.update(len(img_ids))
 
     return g.api.project.get_info_by_id(output_project_id)
