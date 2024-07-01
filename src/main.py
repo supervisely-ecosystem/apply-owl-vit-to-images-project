@@ -1,6 +1,8 @@
 import random
 from typing import List
 
+from src.utils import run
+
 import supervisely as sly
 from supervisely.app.widgets import (
     Button,
@@ -686,7 +688,6 @@ preview_card = Card(
 ### Applying model card
 #######################
 
-from src.utils import run
 
 destination_project = DestinationProject(g.workspace.id, project_type=sly.ProjectType.IMAGES)
 run_model_button = Button("Run model")
