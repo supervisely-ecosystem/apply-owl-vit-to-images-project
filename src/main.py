@@ -1,6 +1,8 @@
 import random
 from typing import List
 
+from src.utils import run
+
 import supervisely as sly
 from supervisely.app.widgets import (
     Button,
@@ -48,12 +50,10 @@ def get_images_infos_for_preview():
             samples_count = dataset.images_count
         else:
             samples_count = dataset.images_count * (100 - len(datasets_list)) // 100
-            if samples_count == 0:
-                samples_count = 1
-        
-        IMAGES_INFO_LIST += random.sample(
-            g.api.image.get_list(dataset.id), samples_count
-        )
+        if samples_count == 0:
+            break
+
+        IMAGES_INFO_LIST += random.sample(g.api.image.get_list(dataset.id), samples_count)
         if len(IMAGES_INFO_LIST) >= 1000:
             break
     return IMAGES_INFO_LIST
@@ -100,9 +100,7 @@ def on_dataset_selected(new_dataset_ids=None):
             # update_images_preview()
             CURRENT_REF_IMAGE_INDEX = 0
             REF_IMAGE_HISTORY = [CURRENT_REF_IMAGE_INDEX]
-            image_region_selector.image_update(
-                IMAGES_INFO_LIST[CURRENT_REF_IMAGE_INDEX]
-            )
+            image_region_selector.image_update(IMAGES_INFO_LIST[CURRENT_REF_IMAGE_INDEX])
 
     sly.logger.info(
         f"Team: {g.team.id} \t Project: {g.project_info.id} \t Datasets: {g.DATASET_IDS}"
@@ -221,9 +219,7 @@ def set_model_type():
         select_model_session.enable()
         set_model_type_button.enable()
         set_model_type_button.text = "Connect to model"
-        toggle_cards(
-            ["model_settings_card", "preview_card", "run_model_card"], enabled=False
-        )
+        toggle_cards(["model_settings_card", "preview_card", "run_model_card"], enabled=False)
         set_input_button.disable()
         set_input_button.text = "Set model input"
         update_images_preview_button.disable()
@@ -281,9 +277,7 @@ def set_model_type():
 inference_type_selection_card = Card(
     title="Connect to model",
     description="Select served model from list below",
-    content=Container(
-        [select_model_session, model_info, model_set_done, set_model_type_button]
-    ),
+    content=Container([select_model_session, model_info, model_set_done, set_model_type_button]),
 )
 
 
@@ -315,12 +309,8 @@ def bbox_updated(new_scaled_bbox):
 previous_image_button = Button(
     "Previous image", icon="zmdi zmdi-skip-previous", button_size="small"
 )
-next_image_button = Button(
-    "Next image", icon="zmdi zmdi-skip-next", button_size="small"
-)
-random_image_button = Button(
-    "New random image", icon="zmdi zmdi-refresh", button_size="small"
-)
+next_image_button = Button("Next image", icon="zmdi zmdi-skip-next", button_size="small")
+random_image_button = Button("New random image", icon="zmdi zmdi-refresh", button_size="small")
 set_input_button = Button("Set model input")
 previous_image_button.disable()
 
@@ -577,9 +567,7 @@ def update_images_preview():
     grid_gallery.show()
 
 
-update_predictions_preview_button = Button(
-    "Predictions preview", icon="zmdi zmdi-labels"
-)
+update_predictions_preview_button = Button("Predictions preview", icon="zmdi zmdi-labels")
 
 
 @update_predictions_preview_button.click
@@ -645,9 +633,7 @@ def update_predictions_preview():
             pbar.update(1)
 
     grid_gallery.clean_up()
-    for i, (image_info, annotation) in enumerate(
-        zip(PREVIEW_IMAGES_INFOS, annotations_list)
-    ):
+    for i, (image_info, annotation) in enumerate(zip(PREVIEW_IMAGES_INFOS, annotations_list)):
         grid_gallery.append(
             image_url=image_info.preview_url,
             annotation=annotation,
@@ -697,189 +683,73 @@ preview_card = Card(
     ),
 )
 
+
 #######################
 ### Applying model card
 #######################
-destination_project = DestinationProject(
-    g.workspace.id, project_type=sly.ProjectType.IMAGES
-)
-apply_progress_bar = Progress(hide_on_finish=False)
+
+
+destination_project = DestinationProject(g.workspace.id, project_type=sly.ProjectType.IMAGES)
 run_model_button = Button("Run model")
 
 
 @run_model_button.click
 def run_model():
-    try:
-        toggle_cards(
-            [
-                "data_card",
-                "inference_type_selection_card",
-                "model_settings_card",
-                "preview_card",
-                "run_model_card",
-            ],
-            enabled=False,
-        )
-        button_download_data.disable()
-        set_input_button.disable()
-        next_image_button.disable()
-        random_image_button.disable()
-        previous_image_button.disable()
-        set_model_type_button.disable()
-        update_images_preview_button.disable()
-        update_predictions_preview_button.disable()
-        output_project_thmb.hide()
-        global IS_IMAGE_PROMPT, MODEL_DATA
-        confidence_threshold = confidence_threshhold_input.get_value()
-        nms_threshold = nms_threshhold_input.get_value()
+    toggle_cards(
+        [
+            "data_card",
+            "inference_type_selection_card",
+            "model_settings_card",
+            "preview_card",
+            "run_model_card",
+        ],
+        enabled=False,
+    )
+    button_download_data.disable()
+    set_input_button.disable()
+    next_image_button.disable()
+    random_image_button.disable()
+    previous_image_button.disable()
+    set_model_type_button.disable()
+    update_images_preview_button.disable()
+    update_predictions_preview_button.disable()
+    output_project_thmb.hide()
+    global IS_IMAGE_PROMPT, MODEL_DATA
+    confidence_threshold = confidence_threshhold_input.get_value()
+    nms_threshold = nms_threshhold_input.get_value()
 
-        output_project_id = destination_project.get_selected_project_id()
-        use_project_datasets_structure = (
-            destination_project.use_project_datasets_structure()
-        )
-        output_dataset_id = destination_project.get_selected_dataset_id()
-        if output_project_id is None:
-            output_project_name = destination_project.get_project_name()
-            if output_project_name.strip() == "":
-                output_project_name = f"{g.project_info.name} - (Annotated)"
-            output_project = g.api.project.create(
-                workspace_id=g.workspace.id,
-                name=output_project_name,
-                type=sly.ProjectType.IMAGES,
-                change_name_if_conflict=True,
+    def get_inference_settings():
+        if IS_IMAGE_PROMPT:
+            selected_bbox = image_region_selector.get_bbox()
+            x0, y0, x1, y1 = *selected_bbox[0], *selected_bbox[1]
+            inference_settings = dict(
+                mode="reference_image",
+                reference_bbox=[y0, x0, y1, x1],
+                reference_image_id=image_region_selector._image_id,
+                reference_class_name=class_input.get_value(),
+                confidence_threshold=[
+                    {"text_prompt": confidence_threshold},
+                    {"reference_image": confidence_threshold},
+                ],
+                nms_threshold=nms_threshold,
             )
-            output_project_id = output_project.id
+        else:
+            text_queries = text_prompt_textarea.get_value().split(";")
+            inference_settings = dict(
+                mode="text_prompt",
+                text_queries=text_queries,
+                confidence_threshold=[
+                    {"text_prompt": confidence_threshold},
+                    {"reference_image": confidence_threshold},
+                ],
+                nms_threshold=nms_threshold,
+            )
+        return inference_settings
 
-        output_project_meta = sly.ProjectMeta.from_json(
-            g.api.project.get_meta(output_project_id)
-        )
-        output_project_meta = output_project_meta.merge(g.project_meta)
+    try:
+        output_project_info = run(destination_project, get_inference_settings(), MODEL_DATA)
 
-        if use_project_datasets_structure is False:
-            if output_dataset_id is None:
-                output_dataset_name = destination_project.get_dataset_name()
-                if output_dataset_name.strip() == "":
-                    output_dataset_name = "ds"
-                output_dataset = g.api.dataset.create(
-                    project_id=output_project_id,
-                    name=output_dataset_name,
-                    change_name_if_conflict=True,
-                )
-            else:
-                output_dataset = g.api.dataset.get_info_by_id(output_dataset_id)
-
-        # apply models to project
-        datasets_list = [g.api.dataset.get_info_by_id(ds_id) for ds_id in g.DATASET_IDS]
-        total_items_cnt = sum([ds.items_count for ds in datasets_list])
-        with apply_progress_bar(
-            message="Applying model to project...", total=total_items_cnt
-        ) as pbar:
-            for dataset in datasets_list:
-                # annotate image in its dataset
-                images_info = g.api.image.get_list(dataset.id)
-                for image_info in images_info:
-                    text_queries = text_prompt_textarea.get_value().split(";")
-                    selected_bbox = image_region_selector.get_bbox()
-                    x0, y0, x1, y1 = *selected_bbox[0], *selected_bbox[1]
-
-                    if IS_IMAGE_PROMPT:
-                        inference_settings = dict(
-                            mode="reference_image",
-                            reference_bbox=[y0, x0, y1, x1],
-                            reference_image_id=image_region_selector._image_id,
-                            reference_class_name=class_input.get_value(),
-                            confidence_threshold=[
-                                {"text_prompt": confidence_threshold},
-                                {"reference_image": confidence_threshold},
-                            ],
-                            nms_threshold=nms_threshold,
-                        )
-                        ann = g.api.task.send_request(
-                            MODEL_DATA["session_id"],
-                            "inference_image_id",
-                            data={
-                                "image_id": image_info.id,
-                                "settings": inference_settings,
-                            },
-                            timeout=500,
-                        )
-                    else:
-                        inference_settings = dict(
-                            mode="text_prompt",
-                            text_queries=text_queries,
-                            confidence_threshold=[
-                                {"text_prompt": confidence_threshold},
-                                {"reference_image": confidence_threshold},
-                            ],
-                            nms_threshold=nms_threshold,
-                        )
-                        ann = g.api.task.send_request(
-                            MODEL_DATA["session_id"],
-                            "inference_image_id",
-                            data={
-                                "image_id": image_info.id,
-                                "settings": inference_settings,
-                            },
-                            timeout=500,
-                        )
-
-                    for i, obj in enumerate(ann["annotation"]["objects"]):
-                        label = obj["classTitle"] + "_pred"
-                        ann["annotation"]["objects"][i]["classTitle"] = label
-
-                        if output_project_meta.get_obj_class(label) is None:
-                            new_obj_class = sly.ObjClass(label, sly.Rectangle)
-                            output_project_meta = output_project_meta.add_obj_class(
-                                new_obj_class
-                            )
-                    if output_project_meta.get_tag_meta("confidence") is None:
-                        output_project_meta = output_project_meta.add_tag_meta(
-                            sly.TagMeta("confidence", sly.TagValueType.ANY_NUMBER)
-                        )
-                    ann = sly.Annotation.from_json(
-                        ann["annotation"], output_project_meta
-                    )
-                    g.api.project.update_meta(
-                        output_project_id, output_project_meta.to_json()
-                    )
-
-                    image_ann_json = g.api.annotation.download(image_info.id).annotation
-                    image_ann = sly.Annotation.from_json(
-                        image_ann_json, output_project_meta
-                    )
-                    image_ann = image_ann.add_labels(ann.labels)
-
-                    if use_project_datasets_structure:
-                        output_dataset_name = dataset.name
-                        if not g.api.dataset.exists(
-                            output_project_id, output_dataset_name
-                        ):
-                            output_dataset = g.api.dataset.create(
-                                project_id=output_project_id,
-                                name=output_dataset_name,
-                                change_name_if_conflict=False,
-                            )
-                        else:
-                            output_dataset = g.api.dataset.get_info_by_name(
-                                output_project_id, output_dataset_name
-                            )
-                        output_dataset_id = output_dataset.id
-
-                    if (
-                        g.project_id != output_project_id
-                        or dataset.id != output_dataset_id
-                    ):
-                        image_info = g.api.image.copy(
-                            dst_dataset_id=output_dataset.id,
-                            id=image_info.id,
-                            change_name_if_conflict=True,
-                            with_annotations=False,
-                        )
-                    g.api.annotation.upload_ann(image_info.id, image_ann)
-                    pbar.update()
-
-        output_project_info = g.api.project.get_info_by_id(output_project_id)
-        output_project_thmb.set(info=output_project_info)
+        output_project_thmb.set(output_project_info)
         output_project_thmb.show()
         sly.logger.info("Project was successfully labeled")
     except Exception as e:
@@ -896,71 +766,51 @@ output_project_thmb = ProjectThumbnail()
 output_project_thmb.hide()
 run_model_card = Card(
     title="Apply model",
-    content=Container(
-        [destination_project, run_model_button, apply_progress_bar, output_project_thmb]
-    ),
+    content=Container([destination_project, run_model_button, output_project_thmb]),
 )
 
 
 def toggle_cards(cards: List[str], enabled: bool = False):
     global CURRENT_REF_IMAGE_INDEX, REF_IMAGE_HISTORY
-    if "data_card" in cards:
-        if enabled:
-            data_card.enable()
-            dataset_selector.enable()
+
+    def set_card_state(card, state, elements=[]):
+        if state:
+            card.enable()
+            for element in elements:
+                element.enable()
         else:
-            data_card.disable()
-            dataset_selector.disable()
-    if "inference_type_selection_card" in cards:
-        if enabled:
-            inference_type_selection_card.enable()
-            select_model_session.enable()
-        else:
-            inference_type_selection_card.disable()
-            select_model_session.disable()
-    if "model_settings_card" in cards:
-        if enabled:
-            model_settings_card.enable()
-            text_prompt_textarea.enable()
-            class_input.enable()
-            image_region_selector.enable()
-            if CURRENT_REF_IMAGE_INDEX != REF_IMAGE_HISTORY[0]:
-                previous_image_button.enable()
-            if CURRENT_REF_IMAGE_INDEX < len(IMAGES_INFO_LIST) - 1:
-                next_image_button.enable()
-            confidence_threshhold_input.enable()
-            nms_threshhold_input.enable()
-            random_image_button.enable()
-            model_input_tabs.enable()
-        else:
-            model_settings_card.disable()
-            text_prompt_textarea.disable()
-            class_input.disable()
-            image_region_selector.disable()
-            previous_image_button.disable()
-            next_image_button.disable()
-            confidence_threshhold_input.disable()
-            nms_threshhold_input.disable()
-            random_image_button.disable()
-            model_input_tabs.disable()
-    if "preview_card" in cards:
-        if enabled:
-            preview_card.enable()
-            grid_gallery.enable()
-            update_images_preview_button.enable()
-            update_predictions_preview_button.enable()
-        else:
-            preview_card.disable()
-            grid_gallery.disable()
-            update_images_preview_button.disable()
-            update_predictions_preview_button.disable()
-    if "run_model_card" in cards:
-        if enabled:
-            run_model_card.enable()
-            destination_project.enable()
-        else:
-            run_model_card.disable()
-            destination_project.disable()
+            card.disable()
+            for element in elements:
+                element.disable()
+
+    card_mappings = {
+        "data_card": (data_card, [dataset_selector]),
+        "inference_type_selection_card": (inference_type_selection_card, [select_model_session]),
+        "model_settings_card": (
+            model_settings_card,
+            [
+                text_prompt_textarea,
+                class_input,
+                image_region_selector,
+                confidence_threshhold_input,
+                nms_threshhold_input,
+                random_image_button,
+                model_input_tabs,
+                previous_image_button if CURRENT_REF_IMAGE_INDEX != REF_IMAGE_HISTORY[0] else None,
+                next_image_button if CURRENT_REF_IMAGE_INDEX < len(IMAGES_INFO_LIST) - 1 else None,
+            ],
+        ),
+        "preview_card": (
+            preview_card,
+            [grid_gallery, update_images_preview_button, update_predictions_preview_button],
+        ),
+        "run_model_card": (run_model_card, [destination_project]),
+    }
+
+    for card in cards:
+        if card in card_mappings:
+            card_element, elements = card_mappings[card]
+            set_card_state(card_element, enabled, [e for e in elements if e is not None])
 
 
 toggle_cards(
