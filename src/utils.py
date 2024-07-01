@@ -57,7 +57,10 @@ def run(
                 output_dataset_name = destination_project.get_dataset_name()
                 if not output_dataset_name or output_dataset_name.strip() == "":
                     output_dataset_name = "ds"
-        output_dataset = g.api.dataset.get_or_create(output_project.id, output_dataset_name)
+            else:
+                output_dataset_info = g.api.dataset.get_info_by_id(output_dataset_id)
+                output_dataset_name = output_dataset_info.name
+        output_dataset = g.api.dataset.get_or_create(output_project_id, output_dataset_name)
 
         return output_dataset.id
 
