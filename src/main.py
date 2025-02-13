@@ -332,6 +332,8 @@ previous_image_button = Button(
 next_image_button = Button("Next image", icon="zmdi zmdi-skip-next", button_size="small")
 random_image_button = Button("New random image", icon="zmdi zmdi-refresh", button_size="small")
 set_input_button = Button("Set model input")
+
+next_image_button.disable()
 previous_image_button.disable()
 
 
