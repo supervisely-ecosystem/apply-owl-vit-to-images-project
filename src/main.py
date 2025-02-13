@@ -20,7 +20,7 @@ from supervisely.app.widgets import (
     SelectAppSession,
     DoneLabel,
     ModelInfo,
-    SelectDataset,
+    SelectDatasetTree,
     DestinationProject,
     Flexbox,
     Grid,
@@ -51,7 +51,7 @@ def get_images_infos_for_preview():
         else:
             samples_count = dataset.images_count * (100 - len(datasets_list)) // 100
         if samples_count == 0:
-            break
+            continue
 
         IMAGES_INFO_LIST += random.sample(g.api.image.get_list(dataset.id), samples_count)
         if len(IMAGES_INFO_LIST) >= 1000:
@@ -64,10 +64,18 @@ IMAGES_INFO_LIST = get_images_infos_for_preview()
 ######################
 ### Input project card
 ######################
-dataset_selector = SelectDataset(
-    project_id=g.project_id, multiselect=True, select_all_datasets=True
+dataset_selector = SelectDatasetTree(
+    multiselect=True,
+    flat=True,
+    select_all_datasets=True,
+    allowed_project_types=[sly.ProjectType.IMAGES],
+    always_open=False,
+    compact=False,
+    team_is_selectable=True,
+    workspace_is_selectable=True,
+    append_to_body=False,
+    show_select_all_datasets_checkbox=True,
 )
-
 
 # def func_caller(value):
 #    on_dataset_selected(value)
@@ -78,8 +86,10 @@ def on_dataset_selected(new_dataset_ids=None):
 
     if not new_dataset_ids:
         new_dataset_ids = dataset_selector.get_selected_ids()
+        if new_dataset_ids is None:
+            new_dataset_ids = []
 
-    new_project_id = dataset_selector._project_selector.get_selected_id()
+    new_project_id = dataset_selector.get_selected_project_id()
     if new_project_id != g.project_id:
         dataset_selector.disable()
         g.project_id = new_project_id
@@ -98,9 +108,19 @@ def on_dataset_selected(new_dataset_ids=None):
             g.DATASET_IDS = new_dataset_ids
             IMAGES_INFO_LIST = get_images_infos_for_preview()
             # update_images_preview()
-            CURRENT_REF_IMAGE_INDEX = 0
-            REF_IMAGE_HISTORY = [CURRENT_REF_IMAGE_INDEX]
-            image_region_selector.image_update(IMAGES_INFO_LIST[CURRENT_REF_IMAGE_INDEX])
+            if len(IMAGES_INFO_LIST) > 0:
+                CURRENT_REF_IMAGE_INDEX = 0
+                REF_IMAGE_HISTORY = [CURRENT_REF_IMAGE_INDEX]
+                image_region_selector.image_update(IMAGES_INFO_LIST[CURRENT_REF_IMAGE_INDEX])
+            else:
+                sly.app.show_dialog(
+                    "No images found",
+                    "No images in selected datasets. Please select another datasets.",
+                    status="info",
+                )
+                sly.logger.debug("No images in selected datasets.")
+                button_download_data.disable()
+                return
 
     sly.logger.info(
         f"Team: {g.team.id} \t Project: {g.project_info.id} \t Datasets: {g.DATASET_IDS}"
