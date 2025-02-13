@@ -31,5 +31,5 @@
     "name": "init"
   },
   "slug": "supervisely-ecosystem/owl-vit-app",
-  "min_instance_version": "6.9.22"
+  "min_instance_version": "6.12.28"
 }
