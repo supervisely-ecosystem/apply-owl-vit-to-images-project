@@ -48,9 +48,20 @@ def run(
         output_project_id = output_project.id
 
     def get_output_ds(destination_project: sly.app.widgets.DestinationProject, dataset_name):
+
+        def create_nested_ds_structure(ds_info, children, parent_id=None):
+            ds = g.api.dataset.create(output_project_id, ds_info.name, parent_id=parent_id)
+            if children:
+                for child_ds_info, child_children in children.items():
+                    create_nested_ds_structure(child_ds_info, child_children, ds.id)
+
         use_project_datasets_structure = destination_project.use_project_datasets_structure()
         if use_project_datasets_structure is True:
-            output_dataset_name = dataset_name
+            # output_dataset_name = dataset_name
+            ds = g.api.dataset.get_info_by_name(output_project_id, dataset_name)
+            if ds is None:
+                for ds_info, children in g.api.dataset.get_tree(g.project_id).items():
+                    create_nested_ds_structure(ds_info, children)
         else:
             output_dataset_id = destination_project.get_selected_dataset_id()
             if not output_dataset_id:
