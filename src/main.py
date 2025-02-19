@@ -1,6 +1,8 @@
 import random
 from typing import List
 
+from os.path import join
+
 from src.utils import run
 
 import supervisely as sly
@@ -432,14 +434,19 @@ def build_table():
     images_table.read_json(None)
 
     rows = []
-    for dataset_id in g.DATASET_IDS:
+    for path, ds_info in g.api.dataset.tree(g.project_id):
+        if ds_info.id not in g.DATASET_IDS:
+            continue
+
+        dataset_name = join(*path, ds_info.name)
+        dataset_id = ds_info.id
+
         image_infos = g.api.image.get_list(dataset_id)
-        dataset_info = g.api.dataset.get_info_by_id(dataset_id)
 
         for image_info in image_infos:
             rows.append(
                 [
-                    dataset_info.name,
+                    dataset_name,
                     image_info.id,
                     image_info.name,
                     image_info.width,
