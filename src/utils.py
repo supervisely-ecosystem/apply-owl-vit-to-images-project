@@ -57,11 +57,11 @@ def run(
 
         use_project_datasets_structure = destination_project.use_project_datasets_structure()
         if use_project_datasets_structure is True:
-            # output_dataset_name = dataset_name
             ds = g.api.dataset.get_info_by_name(output_project_id, dataset_name)
             if ds is None:
                 for ds_info, children in g.api.dataset.get_tree(g.project_id).items():
                     create_nested_ds_structure(ds_info, children)
+            output_dataset_name = dataset_name
         else:
             output_dataset_id = destination_project.get_selected_dataset_id()
             if not output_dataset_id:
