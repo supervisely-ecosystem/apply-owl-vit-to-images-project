@@ -47,10 +47,35 @@ def run(
         )
         output_project_id = output_project.id
 
-    def get_output_ds(destination_project: sly.app.widgets.DestinationProject, dataset_name):
+    def get_output_ds(
+        destination_project: sly.app.widgets.DestinationProject, dataset_info: sly.DatasetInfo
+    ):
+        dataset_name = dataset_info.name
+
+        def create_nested_ds_structure(ds_info, children, ds_ids, parent_id=None):
+            ds = None
+            if ds_info.id in ds_ids:
+                ds = g.api.dataset.create(output_project_id, ds_info.name, parent_id=parent_id)
+            if children:
+                for child_ds_info, child_children in children.items():
+                    if ds:
+                        g.id_to_parent[child_ds_info.id] = ds.id
+                    parent_id = ds.id if ds else None
+                    create_nested_ds_structure(child_ds_info, child_children, ds_ids, parent_id)
+
         use_project_datasets_structure = destination_project.use_project_datasets_structure()
         if use_project_datasets_structure is True:
-            output_dataset_name = dataset_name
+            ds = g.api.dataset.get_info_by_name(
+                output_project_id, dataset_name, parent_id=g.id_to_parent.get(dataset_info.id)
+            )
+            if ds is None:
+                for ds_info, children in g.api.dataset.get_tree(g.project_id).items():
+                    create_nested_ds_structure(ds_info, children, g.DATASET_IDS)
+                output_dataset = g.api.dataset.get_info_by_name(
+                    output_project_id, dataset_name, parent_id=g.id_to_parent.get(dataset_info.id)
+                )
+            else:
+                output_dataset = ds
         else:
             output_dataset_id = destination_project.get_selected_dataset_id()
             if not output_dataset_id:
@@ -60,8 +85,7 @@ def run(
             else:
                 output_dataset_info = g.api.dataset.get_info_by_id(output_dataset_id)
                 output_dataset_name = output_dataset_info.name
-        output_dataset = g.api.dataset.get_or_create(output_project_id, output_dataset_name)
-
+            output_dataset = output_dataset_info
         return output_dataset.id
 
     # merge project metas and add tag "confidence" to it
@@ -79,7 +103,7 @@ def run(
     with apply_progress_bar(message="Applying model to project...", total=total_items_cnt) as pbar:
         for dataset in datasets_list:
             images_info = g.api.image.get_list(dataset.id)
-            output_dataset_id = get_output_ds(destination_project, dataset.name)
+            output_dataset_id = get_output_ds(destination_project, dataset)
             for img_infos_batch in sly.batched(images_info):
                 img_ids = [image_info.id for image_info in img_infos_batch]
 

@@ -21,6 +21,8 @@ workspace = api.workspace.get_info_by_id(project_info.workspace_id)
 # team.id will be used for storaging app results in team files
 team = api.team.get_info_by_id(workspace.team_id)
 
+id_to_parent = {}
+
 DATASET_IDS = [dataset_id] if dataset_id else []
 COLUMNS_COUNT = 6
 PREVIEW_IMAGES_COUNT = 18
