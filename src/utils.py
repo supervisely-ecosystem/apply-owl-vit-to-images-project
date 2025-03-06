@@ -65,27 +65,26 @@ def run(
 
         use_project_datasets_structure = destination_project.use_project_datasets_structure()
         if use_project_datasets_structure is True:
-            ds = g.api.dataset.get_info_by_name(
+            output_dataset = g.api.dataset.get_info_by_name(
                 output_project_id, dataset_name, parent_id=g.id_to_parent.get(dataset_info.id)
             )
-            if ds is None:
+            if output_dataset is None:
                 for ds_info, children in g.api.dataset.get_tree(g.project_id).items():
                     create_nested_ds_structure(ds_info, children, g.DATASET_IDS)
                 output_dataset = g.api.dataset.get_info_by_name(
                     output_project_id, dataset_name, parent_id=g.id_to_parent.get(dataset_info.id)
                 )
-            else:
-                output_dataset = ds
         else:
             output_dataset_id = destination_project.get_selected_dataset_id()
             if not output_dataset_id:
                 output_dataset_name = destination_project.get_dataset_name()
                 if not output_dataset_name or output_dataset_name.strip() == "":
                     output_dataset_name = "ds"
+                output_dataset = g.api.dataset.create(
+                    output_project_id, output_dataset_name, change_name_if_conflict=True
+                )
             else:
-                output_dataset_info = g.api.dataset.get_info_by_id(output_dataset_id)
-                output_dataset_name = output_dataset_info.name
-            output_dataset = output_dataset_info
+                output_dataset = g.api.dataset.get_info_by_id(output_dataset_id)
         return output_dataset.id
 
     # merge project metas and add tag "confidence" to it
