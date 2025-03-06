@@ -610,7 +610,8 @@ def update_predictions_preview():
     text_queries = text_prompt_textarea.get_value().split(";")
     # for IMAGE REFERENCE
     selected_bbox = image_region_selector.get_bbox()
-    x0, y0, x1, y1 = *selected_bbox[0], *selected_bbox[1]
+    if selected_bbox is not None:
+        x0, y0, x1, y1 = *selected_bbox[0], *selected_bbox[1]
 
     annotations_list = []
 
