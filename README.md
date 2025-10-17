@@ -9,7 +9,7 @@ Integration of the Owl-ViT model for class-agnostic object detection
   <a href="#How-to-Run">How to Run</a>
 </p>
 
-[![](https://img.shields.io/badge/supervisely-ecosystem-brightgreen)](../../../../supervisely-ecosystem/apply-owl-vit-to-images-project)
+[![](https://img.shields.io/badge/supervisely-ecosystem-brightgreen)](https://ecosystem.supervisely.com/apps/supervisely-ecosystem/apply-owl-vit-to-images-project)
 [![](https://img.shields.io/badge/slack-chat-green.svg?logo=slack)](https://supervisely.com/slack)
 ![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/supervisely-ecosystem/apply-owl-vit-to-images-project)
 [![views](https://app.supervisely.com/img/badges/views/supervisely-ecosystem/apply-owl-vit-to-images-project.png)](https://supervisely.com)
@@ -23,7 +23,7 @@ Application allows you to label projects images using Owl-ViT detection model.
 Application key points:
 
 - Select project or dataset to label
-- Serve this model by [Serve OWL-ViT](../../../../supervisely-ecosystem/apply-object-segmentor-to-images-project) app and choose model session in selector
+- Serve this model by [Serve OWL-ViT](https://ecosystem.supervisely.com/apps/apply-object-segmentor-to-images-project) app and choose model session in selector
 <img data-key="sly-module-link" data-module-slug="supervisely-ecosystem/serve-owl-vit" src="https://user-images.githubusercontent.com/115161827/230909082-8d0cb4f1-ce7c-490a-9187-f87d061c1f7b.png" height="70px" margin-bottom="20px"/>
 
 - Set up model input data as text-prompt or reference-image
